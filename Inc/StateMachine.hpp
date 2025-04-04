@@ -15,15 +15,20 @@ using action = std::function<void()>;
 
 class StateMachine {
 private:
-    state_id current_state;
+    state_id current_state = -1;
     std::unordered_map<state_id, std::vector<transition>> transitions;
-    std::unordered_map<state_id, action> actions;
+    std::unordered_map<state_id, action> states;
+    
+    uint8_t n_states = 0;
 
 public:
 
-    void add_state(state_id id, std::function<void()> action);
+    state_id add_state(action action);
+
     void add_transition(state_id old_state, std::function<bool()> predicate, state_id new_state);
     
+    void init(state_id initial_state);
+
     void update();
 
 };
