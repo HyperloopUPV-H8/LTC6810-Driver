@@ -4,7 +4,7 @@ set(TARGET LTC6810Driver)
 project(${TARGET} VERSION 1.0 LANGUAGES CXX)
 
 set(CPP_FILES
-    Src/example.cpp
+    Src/StateMachine.cpp
 )
 
 add_library(${TARGET} STATIC ${CPP_FILES})
