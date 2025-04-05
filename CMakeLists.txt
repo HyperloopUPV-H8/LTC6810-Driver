@@ -5,6 +5,7 @@ project(${TARGET} VERSION 1.0 LANGUAGES CXX)
 
 set(CPP_FILES
     Src/StateMachine.cpp
+    Src/Driver.cpp
 )
 
 add_library(${TARGET} STATIC ${CPP_FILES})
