@@ -15,7 +15,7 @@ using action = std::function<void()>;
 
 class StateMachine {
 private:
-    state_id current_state = -1;
+    state_id current_state = 255;
     std::unordered_map<state_id, std::vector<transition>> transitions;
     std::unordered_map<state_id, action> states;
     

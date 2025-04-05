@@ -4,6 +4,7 @@
 
 state_id StateMachine::add_state(action action) {
     ++n_states;
+    assert(n_states == 255 && "Maximum number of states is 254");
     states[n_states] = action;
     return n_states;
 }
@@ -22,7 +23,7 @@ void StateMachine::init(state_id initial_state) {
 }
 
 void StateMachine::update() {
-    assert(current_state == -1 && "You must configure initial state using init()");
+    assert(current_state == 255 && "You must configure initial state using init()");
 
     for(const auto& [predicate, state] : transitions[current_state]) {
         if(predicate()) {
