@@ -79,5 +79,16 @@
         "text_encoding": "cpp",
         "thread": "cpp",
         "forward_list": "cpp"
+        "clocale": "cpp",
+        "deque": "cpp",
+        "memory_resource": "cpp",
+        "numeric": "cpp",
+        "string_view": "cpp",
+        "system_error": "cpp",
+        "iostream": "cpp",
+        "istream": "cpp",
+        "numbers": "cpp",
+        "ostream": "cpp",
+        "streambuf": "cpp"
     }
 }
