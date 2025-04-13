@@ -86,4 +86,13 @@ class StateMachine {
     };
 };
 
+template <typename StateEnum, typename... States>
+    requires are_states<StateEnum, States...>
+consteval auto make_state_machine(StateEnum initial_state, States... states) {
+    constexpr size_t NStates = sizeof...(States);
+    constexpr size_t NTransitions = (states.get_transitions().size() + ...);
+    return StateMachine<StateEnum, NStates, NTransitions>(initial_state,
+                                                          states...);
+}
+
 #endif
