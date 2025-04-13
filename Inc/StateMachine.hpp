@@ -1,58 +1,85 @@
 #ifndef STATEMACHINE_HPP
 #define STATEMACHINE_HPP
 
-#include <unordered_map>
-#include <vector>
-
 using Callback = void (*)();
 using Guard = bool (*)();
 
 template <class StateEnum>
 struct Transition {
-    StateEnum root;
     StateEnum target;
     Guard predicate;
 };
 
-template <class StateEnum>
+template <class StateEnum, typename... T>
+concept are_transitions = (std::same_as<T, Transition<StateEnum>> && ...);
+
+template <class StateEnum, size_t NTransitions>
 struct State {
+   private:
     StateEnum state;
     Callback action;
-};
-
-template <class StateEnum>
-class StateMachine {
-    using States = std::unordered_map<StateEnum, State<StateEnum>>;
-    using Transitions =
-        std::unordered_map<StateEnum, std::vector<Transition<StateEnum>>>;
-
-    StateEnum current_state;
-    States states;
-    Transitions transitions;
+    std::array<Transition<StateEnum>, NTransitions> transitions;
 
    public:
-    template <size_t NStates, size_t NTransitions>
-    StateMachine(
-        StateEnum initial_state,
-        const std::array<State<StateEnum>, NStates>& states,
-        const std::array<Transition<StateEnum>, NTransitions>& transitions)
-        : current_state(initial_state) {
-        for (const State<StateEnum>& s : states) {
-            this->states[s.state] = s;
+    template <typename... T>
+        requires are_transitions<StateEnum, T...>
+    consteval State(StateEnum state, Callback action, T... transitions)
+        : state(state), action(action), transitions({transitions...}) {}
+
+    consteval const StateEnum& get_state() const { return state; };
+    consteval const Callback& get_action() const { return action; };
+    consteval const auto& get_transitions() const { return transitions; };
+};
+
+template <typename T, class StateEnum>
+struct is_state : std::false_type {};
+
+template <class StateEnum, size_t N>
+struct is_state<State<StateEnum, N>, StateEnum> : std::true_type {};
+
+template <class StateEnum, typename... Ts>
+concept are_states = (is_state<Ts, StateEnum>::value && ...);
+
+template <class StateEnum, size_t NStates, size_t NTransitions>
+class StateMachine {
+    StateEnum current_state;
+
+    std::array<Callback, NStates> actions;
+
+    std::array<Transition<StateEnum>, NTransitions> transitions;
+    std::array<std::pair<size_t, size_t>, NStates> transitions_assoc;
+
+    consteval void process_state(auto state, size_t offset) {
+        actions[static_cast<size_t>(state.get_state())] = state.get_action();
+
+        for (const auto& t : state.get_transitions()) {
+            transitions[offset++] = t;
         }
 
-        for (const Transition<StateEnum>& t : transitions) {
-            this->transitions[t.root].push_back(t);
-        }
-
-        this->states[current_state].action();
+        transitions_assoc[static_cast<size_t>(state.get_state())] = {
+            offset - state.get_transitions().size(),
+            state.get_transitions().size()};
     }
 
-    void update() {
-        for (const Transition<StateEnum>& t : transitions[current_state]) {
+   public:
+    template <typename... S>
+        requires are_states<StateEnum, S...>
+    consteval StateMachine(StateEnum initial_state, S... states)
+        : current_state(initial_state) {
+        size_t offset = 0;
+        ((process_state(states, offset),
+          offset += states.get_transitions().size()),
+         ...);
+    }
+
+    void execute() { actions[static_cast<size_t>(current_state)](); }
+
+    void check_transitions() {
+        auto& [i, n] = transitions_assoc[static_cast<size_t>(current_state)];
+        for (auto index = i; index < i + n; ++index) {
+            const auto& t = transitions[index];
             if (t.predicate()) {
                 current_state = t.target;
-                states[current_state].action();
                 break;
             }
         }
