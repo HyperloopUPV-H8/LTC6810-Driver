@@ -31,6 +31,14 @@ struct State {
     consteval const auto& get_transitions() const { return transitions; };
 };
 
+template <typename StateEnum, typename... Transitions>
+    requires are_transitions<StateEnum, Transitions...>
+consteval auto make_state(StateEnum state, Callback action,
+                          Transitions... transitions) {
+    constexpr size_t NTransitions = sizeof...(transitions);
+    return State<StateEnum, NTransitions>(state, action, transitions...);
+}
+
 template <typename T, class StateEnum>
 struct is_state : std::false_type {};
 
@@ -89,7 +97,7 @@ class StateMachine {
 template <typename StateEnum, typename... States>
     requires are_states<StateEnum, States...>
 consteval auto make_state_machine(StateEnum initial_state, States... states) {
-    constexpr size_t NStates = sizeof...(States);
+    constexpr size_t NStates = sizeof...(states);
     constexpr size_t NTransitions = (states.get_transitions().size() + ...);
     return StateMachine<StateEnum, NStates, NTransitions>(initial_state,
                                                           states...);
