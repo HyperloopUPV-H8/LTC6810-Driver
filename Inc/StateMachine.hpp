@@ -1,36 +1,62 @@
 #ifndef STATEMACHINE_HPP
 #define STATEMACHINE_HPP
 
-#include <concepts>
-#include <cstdint>
-#include <utility>
 #include <unordered_map>
 #include <vector>
-#include <functional>
 
-using state_id = uint8_t;
+using Callback = void (*)();
+using Guard = bool (*)();
 
-using transition = std::pair<std::function<bool()>, state_id>;
-using action = std::function<void()>;
+template <class StateEnum>
+struct Transition {
+    StateEnum root;
+    StateEnum target;
+    Guard predicate;
+};
 
+template <class StateEnum>
+struct State {
+    StateEnum state;
+    Callback action;
+};
+
+template <class StateEnum>
 class StateMachine {
-private:
-    state_id current_state = 255;
-    std::unordered_map<state_id, std::vector<transition>> transitions;
-    std::unordered_map<state_id, action> states;
-    
-    uint8_t n_states = 0;
+    using States = std::unordered_map<StateEnum, State<StateEnum>>;
+    using Transitions =
+        std::unordered_map<StateEnum, std::vector<Transition<StateEnum>>>;
 
-public:
+    StateEnum current_state;
+    States states;
+    Transitions transitions;
 
-    state_id add_state(action action);
+   public:
+    template <size_t NStates, size_t NTransitions>
+    StateMachine(
+        StateEnum initial_state,
+        const std::array<State<StateEnum>, NStates>& states,
+        const std::array<Transition<StateEnum>, NTransitions>& transitions)
+        : current_state(initial_state) {
+        for (const State<StateEnum>& s : states) {
+            this->states[s.state] = s;
+        }
 
-    void add_transition(state_id old_state, std::function<bool()> predicate, state_id new_state);
-    
-    void init(state_id initial_state);
+        for (const Transition<StateEnum>& t : transitions) {
+            this->transitions[t.root].push_back(t);
+        }
 
-    void update();
+        this->states[current_state].action();
+    }
 
+    void update() {
+        for (const Transition<StateEnum>& t : transitions[current_state]) {
+            if (t.predicate()) {
+                current_state = t.target;
+                states[current_state].action();
+                break;
+            }
+        }
+    };
 };
 
 #endif
