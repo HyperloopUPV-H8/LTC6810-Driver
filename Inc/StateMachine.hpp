@@ -49,13 +49,47 @@ template <class StateEnum, typename... Ts>
 concept are_states = (is_state<Ts, StateEnum>::value && ...);
 
 template <class StateEnum, size_t NStates, size_t NTransitions>
-class StateMachine {
-    StateEnum current_state;
+class StateMachineBuilder {
+    using Actions = std::array<Callback, NStates>;
+    using Transitions = std::array<Transition<StateEnum>, NTransitions>;
+    using TAssocs = std::array<std::pair<size_t, size_t>, NStates>;
 
-    std::array<Callback, NStates> actions;
+    class StateMachine {
+       public:
+        StateEnum current_state;
+        const Actions& actions;
+        const Transitions& transitions;
+        const TAssocs& transitions_assoc;
 
-    std::array<Transition<StateEnum>, NTransitions> transitions;
-    std::array<std::pair<size_t, size_t>, NStates> transitions_assoc;
+        void execute() const { actions[static_cast<size_t>(current_state)](); }
+
+       public:
+        StateMachine(StateEnum& initial_state, const Actions& actions,
+                     const Transitions& transitions, const TAssocs& assocs)
+            : current_state(initial_state),
+              actions(actions),
+              transitions(transitions),
+              transitions_assoc(assocs) {
+            execute();
+        }
+
+        void update() {
+            auto& [i, n] =
+                transitions_assoc[static_cast<size_t>(current_state)];
+            for (auto index = i; index < i + n; ++index) {
+                const auto& t = transitions[index];
+                if (t.predicate()) {
+                    current_state = t.target;
+                    execute();
+                    break;
+                }
+            }
+        };
+    };
+
+    Actions actions;
+    Transitions transitions;
+    TAssocs transitions_assoc;
 
     consteval void process_state(auto state, size_t offset) {
         actions[static_cast<size_t>(state.get_state())] = state.get_action();
@@ -72,35 +106,25 @@ class StateMachine {
    public:
     template <typename... S>
         requires are_states<StateEnum, S...>
-    consteval StateMachine(StateEnum initial_state, S... states)
-        : current_state(initial_state) {
+    consteval StateMachineBuilder(S... states) {
         size_t offset = 0;
         ((process_state(states, offset),
           offset += states.get_transitions().size()),
          ...);
     }
 
-    void execute() { actions[static_cast<size_t>(current_state)](); }
-
-    void check_transitions() {
-        auto& [i, n] = transitions_assoc[static_cast<size_t>(current_state)];
-        for (auto index = i; index < i + n; ++index) {
-            const auto& t = transitions[index];
-            if (t.predicate()) {
-                current_state = t.target;
-                break;
-            }
-        }
-    };
+    auto init(StateEnum initial_state) const {
+        return StateMachine(initial_state, actions, transitions,
+                            transitions_assoc);
+    }
 };
 
 template <typename StateEnum, typename... States>
     requires are_states<StateEnum, States...>
-consteval auto make_state_machine(StateEnum initial_state, States... states) {
+consteval auto make_state_machine(States... states) {
     constexpr size_t NStates = sizeof...(states);
     constexpr size_t NTransitions = (states.get_transitions().size() + ...);
-    return StateMachine<StateEnum, NStates, NTransitions>(initial_state,
-                                                          states...);
+    return StateMachineBuilder<StateEnum, NStates, NTransitions>(states...);
 }
 
 #endif
