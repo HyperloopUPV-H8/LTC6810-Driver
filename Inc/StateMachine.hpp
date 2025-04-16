@@ -14,8 +14,7 @@ template <class StateEnum, typename... T>
 concept are_transitions = (std::same_as<T, Transition<StateEnum>> && ...);
 
 template <class StateEnum, size_t NTransitions>
-struct State {
-   private:
+class State {
     StateEnum state;
     Callback action;
     std::array<Transition<StateEnum>, NTransitions> transitions;
