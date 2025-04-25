@@ -5,10 +5,10 @@
 
 #include "Cell.hpp"
 
-template <uint8_t N_CELLS>
+template <std::size_t N_CELLS>
 class Battery {
    public:
-    Battery() = default;
+    consteval Battery() : cells{}, total_voltage{}, temperature_1{}, temperature_2{} {};
 
     std::array<Cell, N_CELLS> cells{};
     float total_voltage{};
@@ -19,7 +19,7 @@ class Battery {
     void update_total_voltage();
 };
 
-template <uint8_t N_CELLS>
+template <std::size_t N_CELLS>
 void Battery<N_CELLS>::update_total_voltage() {
     total_voltage = 0;
     for (const auto& cell : cells) {

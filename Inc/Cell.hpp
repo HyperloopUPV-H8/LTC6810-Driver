@@ -2,6 +2,6 @@
 
 class Cell {
    public:
-    Cell() = default;
+    consteval Cell() : voltage{} {};
     float voltage{};
 };
