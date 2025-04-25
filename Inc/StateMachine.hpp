@@ -1,6 +1,11 @@
 #ifndef STATEMACHINE_HPP
 #define STATEMACHINE_HPP
 
+#include <array>
+#include <concepts>
+#include <type_traits>
+#include <utility>
+
 using Callback = void (*)();
 using Guard = bool (*)();
 
@@ -53,6 +58,23 @@ class StateMachineBuilder {
     using Transitions = std::array<Transition<StateEnum>, NTransitions>;
     using TAssocs = std::array<std::pair<size_t, size_t>, NStates>;
 
+    Actions actions;
+    Transitions transitions;
+    TAssocs transitions_assoc;
+
+    consteval void process_state(auto state, size_t offset) {
+        actions[static_cast<size_t>(state.get_state())] = state.get_action();
+
+        for (const auto& t : state.get_transitions()) {
+            transitions[offset++] = t;
+        }
+
+        transitions_assoc[static_cast<size_t>(state.get_state())] = {
+            offset - state.get_transitions().size(),
+            state.get_transitions().size()};
+    }
+
+   public:
     class StateMachine {
        public:
         StateEnum current_state;
@@ -86,23 +108,6 @@ class StateMachineBuilder {
         };
     };
 
-    Actions actions;
-    Transitions transitions;
-    TAssocs transitions_assoc;
-
-    consteval void process_state(auto state, size_t offset) {
-        actions[static_cast<size_t>(state.get_state())] = state.get_action();
-
-        for (const auto& t : state.get_transitions()) {
-            transitions[offset++] = t;
-        }
-
-        transitions_assoc[static_cast<size_t>(state.get_state())] = {
-            offset - state.get_transitions().size(),
-            state.get_transitions().size()};
-    }
-
-   public:
     template <typename... S>
         requires are_states<StateEnum, S...>
     consteval StateMachineBuilder(S... states) {
@@ -122,7 +127,7 @@ template <typename StateEnum, typename... States>
     requires are_states<StateEnum, States...>
 consteval auto make_state_machine(States... states) {
     constexpr size_t NStates = sizeof...(states);
-    constexpr size_t NTransitions = (states.get_transitions().size() + ...);
+    constexpr size_t NTransitions = (states.get_transitions().size() + ... + 0);
     return StateMachineBuilder<StateEnum, NStates, NTransitions>(states...);
 }
 

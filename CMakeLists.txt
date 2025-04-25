@@ -4,7 +4,6 @@ set(TARGET LTC6810Driver)
 project(${TARGET} VERSION 1.0 LANGUAGES CXX)
 
 set(CPP_FILES
-    Src/StateMachine.cpp
     Src/Driver.cpp
 )
 
