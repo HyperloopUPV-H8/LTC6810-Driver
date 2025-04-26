@@ -1,0 +1,43 @@
+@startuml Test
+' skinparam classAttributeIconSize 0
+
+' Definición de clases principales
+class Battery {
+    - float voltage
+    - float current
+    + measure()
+    + report()
+}
+
+class Sensor {
+    - int id
+    + readValue()
+}
+
+class VoltageSensor extends Sensor {
+    + readVoltage()
+}
+
+class CurrentSensor extends Sensor {
+    + readCurrent()
+}
+
+class BatteryManagementSystem {
+    - Battery battery
+    - List<Sensor> sensors
+    + initialize()
+    + monitor()
+    + shutdown()
+}
+
+' Relaciones
+BatteryManagementSystem *-- Battery : owns
+BatteryManagementSystem *-- Sensor : monitors
+
+' Añadimos una nota
+note right of BatteryManagementSystem
+    The BMS monitors and controls
+    the health of the battery pack.
+end note
+
+@enduml
