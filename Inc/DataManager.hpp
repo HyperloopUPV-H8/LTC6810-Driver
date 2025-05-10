@@ -7,7 +7,7 @@ class DataManager {
     std::array<Battery<N_CELLS>, N_BATTERIES> batteries{};
 
    public:
-    consteval DataManager() : batteries{} {};
+    consteval DataManager() = default;
     std::array<Battery<N_CELLS>, N_BATTERIES>& get_references();
 };
 

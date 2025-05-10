@@ -3,12 +3,9 @@ set(TARGET LTC6810Driver)
 
 project(${TARGET} VERSION 1.0 LANGUAGES CXX)
 
-set(CPP_FILES
-    Src/Driver.cpp
-)
+set(CPP_FILES )
 
-add_library(${TARGET} STATIC ${CPP_FILES})
+# add_library(${TARGET} STATIC ${CPP_FILES})
+add_library(${TARGET} INTERFACE)
 
-target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_LIST_DIR}/Inc)
-
-target_compile_features(${TARGET} PRIVATE cxx_std_23)
+target_include_directories(${TARGET} INTERFACE ${CMAKE_CURRENT_LIST_DIR}/Inc)
