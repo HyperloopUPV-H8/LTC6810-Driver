@@ -1,7 +1,6 @@
 #pragma once
 
-class Cell {
-   public:
+struct Cell {
     consteval Cell() : voltage{} {};
     float voltage{};
 };

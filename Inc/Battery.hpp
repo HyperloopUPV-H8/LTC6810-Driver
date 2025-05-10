@@ -6,9 +6,9 @@
 #include "Cell.hpp"
 
 template <std::size_t N_CELLS>
-class Battery {
-   public:
-    consteval Battery() : cells{}, total_voltage{}, temperature_1{}, temperature_2{} {};
+struct Battery {
+    consteval Battery()
+        : cells{}, total_voltage{}, temperature_1{}, temperature_2{} {};
 
     std::array<Cell, N_CELLS> cells{};
     float total_voltage{};
