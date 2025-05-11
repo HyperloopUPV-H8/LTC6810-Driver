@@ -79,6 +79,14 @@ class NetworkLink {
         return command_with_pec;
     }
 
+    static constexpr bool check_pec(std::span<uint8_t> data,
+                                    std::span<uint8_t, 2> pec) {
+        uint16_t real_pec{calculate_pec(data)};
+        uint8_t high = static_cast<uint8_t>(real_pec >> 8);
+        uint8_t low = static_cast<uint8_t>(real_pec);
+        return high == pec[0] && low == pec[1];
+    }
+
     template <AdcMode mode>
     static constexpr Command build_ADCV() {
         Command adcv{};
@@ -183,8 +191,6 @@ class NetworkLink {
         spi_link.SPI_receive(cell_group_A);
         spi_link.SPI_CS_turn_on();
 
-        // TODO check_pec
-
         spi_link.SPI_CS_turn_off();
         command = add_pec(RDCVB);
         spi_link.SPI_transmit(command);
@@ -194,19 +200,29 @@ class NetworkLink {
         for (uint i = 0; i < N_LTC6810; ++i) {
             const auto offset = i * 8;
 
-            data[i * 6 + 0] =
-                cell_group_A[offset + 1] << 8 | cell_group_A[offset + 0];
-            data[i * 6 + 1] =
-                cell_group_A[offset + 3] << 8 | cell_group_A[offset + 2];
-            data[i * 6 + 2] =
-                cell_group_A[offset + 5] << 8 | cell_group_A[offset + 4];
+            if (check_pec(
+                    std::span<uint8_t, 6>{cell_group_A.data() + offset, 6},
+                    std::span<uint8_t, 2>{cell_group_A.data() + offset + 6,
+                                          2})) {
+                data[i * 6 + 0] =
+                    cell_group_A[offset + 1] << 8 | cell_group_A[offset + 0];
+                data[i * 6 + 1] =
+                    cell_group_A[offset + 3] << 8 | cell_group_A[offset + 2];
+                data[i * 6 + 2] =
+                    cell_group_A[offset + 5] << 8 | cell_group_A[offset + 4];
+            }
 
-            data[i * 6 + 3] =
-                cell_group_B[offset + 1] << 8 | cell_group_B[offset + 0];
-            data[i * 6 + 4] =
-                cell_group_B[offset + 3] << 8 | cell_group_B[offset + 2];
-            data[i * 6 + 5] =
-                cell_group_B[offset + 5] << 8 | cell_group_B[offset + 4];
+            if (check_pec(
+                    std::span<uint8_t, 6>{cell_group_B.data() + offset, 6},
+                    std::span<uint8_t, 2>{cell_group_B.data() + offset + 6,
+                                          2})) {
+                data[i * 6 + 3] =
+                    cell_group_B[offset + 1] << 8 | cell_group_B[offset + 0];
+                data[i * 6 + 4] =
+                    cell_group_B[offset + 3] << 8 | cell_group_B[offset + 2];
+                data[i * 6 + 5] =
+                    cell_group_B[offset + 5] << 8 | cell_group_B[offset + 4];
+            }
         }
 
         return data;
