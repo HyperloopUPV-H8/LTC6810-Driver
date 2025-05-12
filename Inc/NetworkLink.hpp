@@ -10,6 +10,8 @@ using std::array;
 using Command = array<uint8_t, 2>;
 using map_block = array<uint8_t, 6>;
 
+#define REFON 1
+
 enum class AdcMode {
     KHZ_27,
     KHZ_14,
@@ -32,44 +34,39 @@ template <size_t N_LTC6810>
 class NetworkLink {
     const SPIConfig spi_link;
 
-    constexpr static uint16_t CRC15_POLY = 0x4599;
-
-    constexpr static array<uint16_t, 256> init_PEC15_Table() {
-        array<uint16_t, 256> table{};
-
-        for (int i = 0; i < 256; ++i) {
-            uint16_t remainder = static_cast<uint16_t>(i << 7);
-            for (int bit = 0; bit < 8; ++bit) {
+    static constexpr array<uint16_t, 256> init_PEC15_Table() {
+        array<uint16_t, 256> pec15Table;
+        for (int i = 0; i < 256; i++) {
+            uint16_t remainder = i << 7;
+            for (int bit = 8; bit > 0; --bit) {
                 if (remainder & 0x4000) {
-                    remainder =
-                        static_cast<uint16_t>((remainder << 1) ^ CRC15_POLY);
+                    remainder = ((remainder << 1));
+                    remainder = (remainder ^ CRC15_POLY);
                 } else {
-                    remainder = static_cast<uint16_t>(remainder << 1);
+                    remainder = ((remainder << 1));
                 }
             }
-            table[i] = remainder & 0xFFFF;
+            pec15Table[i] = remainder & 0xFFFF;
         }
-
-        return table;
+        return pec15Table;
     }
 
-    constexpr static auto pec15Table = init_PEC15_Table();
+    constexpr static array<uint16_t, 256> pec15Table{init_PEC15_Table()};
+    static const uint16_t CRC15_POLY = 0x4599;
 
-    static constexpr uint16_t calculate_pec(
-        const std::span<const uint8_t>& data) {
+    static constexpr uint16_t calculate_pec(const std::span<uint8_t> data) {
         uint16_t remainder = 16;
         uint16_t address;
 
         for (uint i = 0; i < data.size(); i++) {
-            address = (remainder >> 7) ^ data.data()[i];
+            address = static_cast<uint8_t>(remainder >> 7) ^ data.data()[i];
             remainder = (remainder << 8) ^ pec15Table[address];
         }
 
         return (remainder * 2);
     }
 
-    static constexpr array<uint8_t, 4> add_pec(
-        const array<uint8_t, 2>& command) {
+    static constexpr array<uint8_t, 4> add_pec(array<uint8_t, 2> command) {
         array<uint8_t, 4> command_with_pec;
         command_with_pec[0] = command[0];
         command_with_pec[1] = command[1];
@@ -107,18 +104,34 @@ class NetworkLink {
             adcv[1] |= 0b1 << 7;
         }
 
-        adcv[1] |= 0b11 << 5;
-
-        if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_27 ||
-                      mode == AdcMode::KHZ_7 || mode == AdcMode::HZ_26) {
-            adcv[1] |= (0b0 << 4);
-        } else {
-            adcv[1] |= (0b1 << 4);
-        }
-
-        adcv[1] |= 0b0000;
+        adcv[1] |= 0b1100000;
 
         return adcv;
+    }
+
+    template <AdcMode mode>
+    static constexpr Command build_ADAX() {
+        Command adax{};
+        adax[0] = 0b00000100;
+
+        if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
+            adax[0] |= 0b0;
+            adax[1] |= 0b0 << 7;
+        } else if constexpr (mode == AdcMode::KHZ_27 ||
+                             mode == AdcMode::KHZ_14) {
+            adax[0] |= 0b0;
+            adax[1] |= 0b1 << 7;
+        } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
+            adax[0] |= 0b1;
+            adax[1] |= 0b0 << 7;
+        } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
+            adax[0] |= 0b1;
+            adax[1] |= 0b1 << 7;
+        }
+
+        adax[1] |= 0b1100000;
+
+        return adax;
     }
 
    public:
@@ -126,10 +139,11 @@ class NetworkLink {
 
     void wake_up() {
         array<uint8_t, 1> byte{0XFF};
-        spi_link.SPI_CS_turn_off();
-        spi_link.SPI_transmit(byte);
-        spi_link.SPI_transmit(byte);
-        spi_link.SPI_CS_turn_on();
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            spi_link.SPI_CS_turn_off();
+            spi_link.SPI_transmit(byte);
+            spi_link.SPI_CS_turn_on();
+        }
     }
 
     void config() {
@@ -142,7 +156,11 @@ class NetworkLink {
         std::copy_n(framed_command.begin(), 4, command_packet.begin());
 
         // Harcoded WRCFG at the moment for testing
-        command_packet[4] = 0x00;
+        if constexpr (REFON) {
+            command_packet[4] = 0x04;
+        } else {
+            command_packet[4] = 0x00;
+        }
         command_packet[5] = 0x00;
         command_packet[6] = 0x00;
         command_packet[7] = 0x00;
@@ -156,12 +174,28 @@ class NetworkLink {
 
     void start_cells_reading() {
         // Hardcoded ADC mode at the moment, only to test
-        Command adcv = build_ADCV<AdcMode::KHZ_7>();
+        Command adcv{build_ADCV<AdcMode::KHZ_7>()};
 
         array<uint8_t, 4> framed_command = add_pec(adcv);
 
         spi_link.SPI_CS_turn_off();
         spi_link.SPI_transmit(framed_command);
+
+        // Conversion status valid only after N clock pulses
+        array<uint8_t, (N_LTC6810 + 8 - 1) / 8> dummy{};
+        spi_link.SPI_receive(dummy);
+    };
+
+    void start_GPIOs_reading() {
+        // Hardcoded ADAX command at the moment, only to test
+        Command adax{build_ADAX<AdcMode::KHZ_7>()};
+
+        array<uint8_t, 4> framed_command = add_pec(adax);
+
+        spi_link.SPI_CS_turn_off();
+        spi_link.SPI_transmit(framed_command);
+
+        // Conversion status valid only after N clock pulses
         array<uint8_t, (N_LTC6810 + 8 - 1) / 8> dummy{};
         spi_link.SPI_receive(dummy);
     };
@@ -222,6 +256,54 @@ class NetworkLink {
                     cell_group_B[offset + 3] << 8 | cell_group_B[offset + 2];
                 data[i * 6 + 5] =
                     cell_group_B[offset + 5] << 8 | cell_group_B[offset + 4];
+            }
+        }
+
+        return data;
+    }
+
+    array<uint16_t, N_LTC6810 * 4> read_GPIOs() {
+        array<uint8_t, (6 + 2) * N_LTC6810> auxiliary_group_A{};
+        array<uint8_t, (6 + 2) * N_LTC6810> auxiliary_group_B{};
+        array<uint16_t, N_LTC6810 * 4> data{};
+        array<uint8_t, 4> command{};
+
+        const Command RDAUXA{0x00, 0x0C};
+        const Command RDAUXB{0x00, 0x0E};
+
+        spi_link.SPI_CS_turn_off();
+        command = add_pec(RDAUXA);
+        spi_link.SPI_transmit(command);
+        spi_link.SPI_receive(auxiliary_group_A);
+        spi_link.SPI_CS_turn_on();
+
+        spi_link.SPI_CS_turn_off();
+        command = add_pec(RDAUXB);
+        spi_link.SPI_transmit(command);
+        spi_link.SPI_receive(auxiliary_group_B);
+        spi_link.SPI_CS_turn_on();
+
+        for (uint i = 0; i < N_LTC6810; ++i) {
+            const auto offset = i * 8;
+
+            if (check_pec(
+                    std::span<uint8_t, 6>{auxiliary_group_A.data() + offset, 6},
+                    std::span<uint8_t, 2>{auxiliary_group_A.data() + offset + 6,
+                                          2})) {
+                data[i * 4 + 0] = auxiliary_group_A[offset + 3] << 8 |
+                                  auxiliary_group_A[offset + 2];
+                data[i * 4 + 1] = auxiliary_group_A[offset + 5] << 8 |
+                                  auxiliary_group_A[offset + 4];
+            }
+
+            if (check_pec(
+                    std::span<uint8_t, 6>{auxiliary_group_B.data() + offset, 6},
+                    std::span<uint8_t, 2>{auxiliary_group_B.data() + offset + 6,
+                                          2})) {
+                data[i * 4 + 2] = auxiliary_group_B[offset + 1] << 8 |
+                                  auxiliary_group_B[offset + 0];
+                data[i * 4 + 3] = auxiliary_group_B[offset + 3] << 8 |
+                                  auxiliary_group_B[offset + 2];
             }
         }
 

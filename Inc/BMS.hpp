@@ -8,8 +8,6 @@
 #include "NetworkLink.hpp"
 #include "StateMachine.hpp"
 
-#define REFON 0
-
 const uint32_t TIME_SLEEP{1800};
 const uint32_t TIME_REFUP{4400};
 
@@ -99,6 +97,9 @@ class BMS {
 
     static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
     static inline bool waked_up{false};
+    static inline bool cells_read{false};
+    static inline bool GPIOs_read{false};
+    static inline uint32_t current_time{};
     static inline uint32_t sleep_reference{};
     static inline uint32_t last_read{};
     static inline uint32_t read_time{};
@@ -108,7 +109,7 @@ class BMS {
     static void sleep_action() {}
     static void standby_action() { sleep_reference = get_tick(); }
     static void refup_action() { sleep_reference = get_tick(); }
-    static void measure_action() { link.start_cells_reading(); }
+    static void measure_action() {}
     static void extended_balancing_action() {}
     static void dtm_measure_action() {}
 
@@ -120,7 +121,7 @@ class BMS {
     // LTC6810_SM::Transitions
     // Core SM
     static bool sleep_standby_guard() {
-        if ((get_tick() - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
+        if ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
             link.wake_up();
             link.config();
             return true;
@@ -129,7 +130,7 @@ class BMS {
     }
 
     static bool standby_sleep_guard() {
-        uint32_t sleep_time{(get_tick() - sleep_reference) *
+        uint32_t sleep_time{(current_time - sleep_reference) *
                             TICK_RESOLUTION_MS};
         if (sleep_time >= TIME_SLEEP) {
             return true;
@@ -137,15 +138,19 @@ class BMS {
         return false;
     }
     static bool standby_refup_guard() {
-        uint32_t time{(get_tick() - sleep_reference) * TICK_RESOLUTION_MS};
+        uint32_t time{(current_time - sleep_reference) * TICK_RESOLUTION_MS};
         if (REFON && time >= TIME_REFUP) {
             return true;
         }
         return false;
     }
     static bool standby_measure_guard() {
-        uint32_t measure_time{(get_tick() - last_read) * TICK_RESOLUTION_MS};
-        if (measure_time >= PERIOD_MS) {
+        if (!cells_read) {
+            link.start_cells_reading();
+            return true;
+        }
+        if (!GPIOs_read) {
+            link.start_GPIOs_reading();
             return true;
         }
         return false;
@@ -153,7 +158,7 @@ class BMS {
     static bool standby_extended_balancing_guard() { return false; }
 
     static bool refup_sleep_guard() {
-        uint32_t time{(get_tick() - sleep_reference) * TICK_RESOLUTION_MS};
+        uint32_t time{(current_time - sleep_reference) * TICK_RESOLUTION_MS};
         if (time >= TIME_SLEEP) {
             return true;
         }
@@ -166,17 +171,32 @@ class BMS {
     static bool measure_refup_guard() { return false; }
     static bool measure_standby_guard() {
         if (link.is_conv_done()) {
-            auto conversion = link.read_cells();
-            uint i{0};
-            for (auto& battery : batteries) {
-                for (Cell& cell : battery.cells) {
-                    cell.voltage = conversion[i] * 100e-6;
+            last_read = get_tick();
+            if (!cells_read) {
+                auto conversion = link.read_cells();
+                uint i{0};
+                for (auto& battery : batteries) {
+                    for (Cell& cell : battery.cells) {
+                        cell.voltage = conversion[i] * 100e-6;
+                        ++i;
+                    }
+                    battery.update_total_voltage();
+                }
+                cells_read = true;
+                return true;
+            }
+            if (!GPIOs_read) {
+                auto conversion = link.read_GPIOs();
+                uint i{0};
+                for (auto& battery : batteries) {
+                    const auto offset{i * 4};
+                    battery.temperature_1 = conversion[offset] * 750e-6;
+                    battery.temperature_2 = conversion[offset + 1] * 750e-6;
                     ++i;
                 }
-                battery.update_total_voltage();
+                GPIOs_read = true;
+                return true;
             }
-            last_read = get_tick();  // REVISAR 11/5/25
-            return true;
         }
         return false;
     }
@@ -196,12 +216,16 @@ class BMS {
 
    public:
     static void update() {
+        current_time = get_tick();
+        uint32_t measure_time{(current_time - last_read) * TICK_RESOLUTION_MS};
+        if (measure_time >= PERIOD_MS) {
+            cells_read = false;
+            GPIOs_read = false;
+        }
         core_sm.update();
         isospi_sm.update();
     }
 
-    const static array<Battery<N_CELLS>, N_LTC6810>& get_data() {
-        return batteries;
-    }
+    static array<Battery<N_CELLS>, N_LTC6810>& get_data() { return batteries; }
 };
 #endif
