@@ -28,74 +28,74 @@ template <size_t N_LTC6810, size_t N_CELLS,
           void (*const SPI_CS_TURN_OFF)(void), uint32_t (*const GET_TICK)(void),
           uint8_t TICK_RESOLUTION_MS, uint32_t PERIOD_MS>
 class BMS {
-    static consteval LTC6810_SM::StateMachine<CoreState, 6, 16> make_core_sm() {
-        constexpr LTC6810_SM::State sleep = make_state(
+    static consteval LTC6810::StateMachine<CoreState, 6, 16> make_core_sm() {
+        constexpr LTC6810::State sleep = make_state(
             CoreState::SLEEP, sleep_action,
-            LTC6810_SM::Transition{CoreState::STANDBY, sleep_standby_guard});
-        constexpr LTC6810_SM::State standby = make_state(
+            LTC6810::Transition{CoreState::STANDBY, sleep_standby_guard});
+        constexpr LTC6810::State standby = make_state(
             CoreState::STANDBY, standby_action,
-            LTC6810_SM::Transition{CoreState::SLEEP, standby_sleep_guard},
-            LTC6810_SM::Transition{CoreState::REFUP, standby_refup_guard},
-            LTC6810_SM::Transition{CoreState::MEASURE, standby_measure_guard},
-            LTC6810_SM::Transition{CoreState::EXTENDED_BALANCING,
-                                   standby_extended_balancing_guard});
-        constexpr LTC6810_SM::State refup = make_state(
+            LTC6810::Transition{CoreState::SLEEP, standby_sleep_guard},
+            LTC6810::Transition{CoreState::REFUP, standby_refup_guard},
+            LTC6810::Transition{CoreState::MEASURE, standby_measure_guard},
+            LTC6810::Transition{CoreState::EXTENDED_BALANCING,
+                                standby_extended_balancing_guard});
+        constexpr LTC6810::State refup = make_state(
             CoreState::REFUP, refup_action,
-            LTC6810_SM::Transition{CoreState::SLEEP, refup_sleep_guard},
-            LTC6810_SM::Transition{CoreState::STANDBY, refup_standby_guard},
-            LTC6810_SM::Transition{CoreState::MEASURE, refup_measure_guard},
-            LTC6810_SM::Transition{CoreState::EXTENDED_BALANCING,
-                                   refup_extended_balancing_guard});
-        constexpr LTC6810_SM::State measure = make_state(
+            LTC6810::Transition{CoreState::SLEEP, refup_sleep_guard},
+            LTC6810::Transition{CoreState::STANDBY, refup_standby_guard},
+            LTC6810::Transition{CoreState::MEASURE, refup_measure_guard},
+            LTC6810::Transition{CoreState::EXTENDED_BALANCING,
+                                refup_extended_balancing_guard});
+        constexpr LTC6810::State measure = make_state(
             CoreState::MEASURE, measure_action,
-            LTC6810_SM::Transition{CoreState::REFUP, measure_refup_guard},
-            LTC6810_SM::Transition{CoreState::STANDBY, measure_standby_guard});
-        constexpr LTC6810_SM::State extended_balancing = make_state(
+            LTC6810::Transition{CoreState::REFUP, measure_refup_guard},
+            LTC6810::Transition{CoreState::STANDBY, measure_standby_guard});
+        constexpr LTC6810::State extended_balancing = make_state(
             CoreState::EXTENDED_BALANCING, extended_balancing_action,
-            LTC6810_SM::Transition{CoreState::SLEEP,
-                                   extended_balancing_sleep_guard},
-            LTC6810_SM::Transition{CoreState::STANDBY,
-                                   extended_balancing_standby_guard},
-            LTC6810_SM::Transition{CoreState::DTM_MEASURE,
-                                   extended_balancing_dtm_measure_guard});
-        constexpr LTC6810_SM::State dtm_measure = make_state(
+            LTC6810::Transition{CoreState::SLEEP,
+                                extended_balancing_sleep_guard},
+            LTC6810::Transition{CoreState::STANDBY,
+                                extended_balancing_standby_guard},
+            LTC6810::Transition{CoreState::DTM_MEASURE,
+                                extended_balancing_dtm_measure_guard});
+        constexpr LTC6810::State dtm_measure = make_state(
             CoreState::DTM_MEASURE, dtm_measure_action,
-            LTC6810_SM::Transition{CoreState::STANDBY,
-                                   dtm_measure_standby_guard},
-            LTC6810_SM::Transition{CoreState::EXTENDED_BALANCING,
-                                   dtm_measure_extended_balancing_guard});
+            LTC6810::Transition{CoreState::STANDBY, dtm_measure_standby_guard},
+            LTC6810::Transition{CoreState::EXTENDED_BALANCING,
+                                dtm_measure_extended_balancing_guard});
 
         return make_state_machine(CoreState::SLEEP, sleep, standby, refup,
                                   measure, extended_balancing, dtm_measure);
     }
 
-    static consteval LTC6810_SM::StateMachine<IsoSPIState, 3, 4>
-    make_isospi_sm() {
-        constexpr LTC6810_SM::State idle = make_state(
+    static consteval LTC6810::StateMachine<IsoSPIState, 3, 4> make_isospi_sm() {
+        constexpr LTC6810::State idle = make_state(
             IsoSPIState::IDLE, idle_action,
-            LTC6810_SM::Transition{IsoSPIState::READY, idle_ready_guard});
-        constexpr LTC6810_SM::State ready = make_state(
+            LTC6810::Transition{IsoSPIState::READY, idle_ready_guard});
+        constexpr LTC6810::State ready = make_state(
             IsoSPIState::READY, ready_action,
-            LTC6810_SM::Transition{IsoSPIState::IDLE, ready_idle_guard},
-            LTC6810_SM::Transition{IsoSPIState::ACTIVE, ready_active_guard});
-        constexpr LTC6810_SM::State active = make_state(
+            LTC6810::Transition{IsoSPIState::IDLE, ready_idle_guard},
+            LTC6810::Transition{IsoSPIState::ACTIVE, ready_active_guard});
+        constexpr LTC6810::State active = make_state(
             IsoSPIState::ACTIVE, active_action,
-            LTC6810_SM::Transition{IsoSPIState::READY, active_ready_guard});
+            LTC6810::Transition{IsoSPIState::READY, active_ready_guard});
 
         return make_state_machine(IsoSPIState::IDLE, idle, ready, active);
     }
 
-    static inline LTC6810_SM::StateMachine<CoreState, 6, 16> core_sm{
+    static inline LTC6810::StateMachine<CoreState, 6, 16> core_sm{
         make_core_sm()};
-    static inline LTC6810_SM::StateMachine<IsoSPIState, 3, 4> isospi_sm{
+    static inline LTC6810::StateMachine<IsoSPIState, 3, 4> isospi_sm{
         make_isospi_sm()};
 
     constexpr static uint32_t (*const get_tick)(void) = GET_TICK;
 
-    static inline NetworkLink<N_LTC6810> link{
-        SPIConfig{SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON, SPI_CS_TURN_OFF}};
+    static inline LTC6810::NetworkLink<N_LTC6810, LTC6810::AdcMode::KHZ_7> link{
+        LTC6810::SPIConfig{SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON,
+                           SPI_CS_TURN_OFF}};
 
     static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
+    static inline array<uint16, N_LTC6810 * 4> GPIOs{};
     static inline bool waked_up{false};
     static inline bool cells_read{false};
     static inline bool GPIOs_read{false};
@@ -118,7 +118,7 @@ class BMS {
     static void ready_action() {}
     static void active_action() {}
 
-    // LTC6810_SM::Transitions
+    // LTC6810::Transitions
     // Core SM
     static bool sleep_standby_guard() {
         if ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
@@ -176,10 +176,20 @@ class BMS {
                 auto conversion = link.read_cells();
                 uint i{0};
                 for (auto& battery : batteries) {
-                    for (Cell& cell : battery.cells) {
-                        cell.voltage = conversion[i] * 100e-6;
-                        ++i;
+                    if (conversion[i].is_pec_valid()) {
+                        auto data = conversion[i].get_16bit_data();
+                        for (uint j{0}; j < 3; ++j) {
+                            battery.cells[j].voltage = data[j] * 100e-6;
+                        }
                     }
+                    ++i;
+                    if (conversion[i].is_pec_valid()) {
+                        auto data = conversion[i].get_16bit_data();
+                        for (uint j{0}; j < 3; ++j) {
+                            battery.cells[j + 3].voltage = data[j] * 1e-4;
+                        }
+                    }
+                    ++i;
                     battery.update_total_voltage();
                 }
                 cells_read = true;
@@ -189,9 +199,14 @@ class BMS {
                 auto conversion = link.read_GPIOs();
                 uint i{0};
                 for (auto& battery : batteries) {
-                    const auto offset{i * 4};
-                    battery.temperature_1 = conversion[offset] * 750e-6;
-                    battery.temperature_2 = conversion[offset + 1] * 750e-6;
+                    const auto offset{i * 2};
+                    if (conversion[offset].is_pec_valid()) {
+                        auto data = conversion[offset].get_16bit_data();
+                        auto resistance =
+                            (10000 * data[i] * 1e-4) / 3 + data[i] * 1e-4;
+                        battery.temperature_1 = (resistance - 100) / 3.85;
+                        battery.temperature_2 = data[2] * 750e-6;
+                    }
                     ++i;
                 }
                 GPIOs_read = true;

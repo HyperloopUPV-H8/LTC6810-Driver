@@ -2,15 +2,18 @@
 #define NETWORK_LINK_HPP
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <span>
 
+#include "LTC6810Utilities.hpp"
+
 using std::array;
-using Command = array<uint8_t, 2>;
-using map_block = array<uint8_t, 6>;
+using std::span;
 
 #define REFON 1
+namespace LTC6810 {
 
 enum class AdcMode {
     KHZ_27,
@@ -30,109 +33,69 @@ struct SPIConfig {
     void (*const SPI_CS_turn_off)(void);
 };
 
-template <size_t N_LTC6810>
+template <size_t N_LTC6810, AdcMode mode>
 class NetworkLink {
     const SPIConfig spi_link;
 
-    static constexpr array<uint16_t, 256> init_PEC15_Table() {
-        array<uint16_t, 256> pec15Table;
-        for (int i = 0; i < 256; i++) {
-            uint16_t remainder = i << 7;
-            for (int bit = 8; bit > 0; --bit) {
-                if (remainder & 0x4000) {
-                    remainder = ((remainder << 1));
-                    remainder = (remainder ^ CRC15_POLY);
-                } else {
-                    remainder = ((remainder << 1));
-                }
-            }
-            pec15Table[i] = remainder & 0xFFFF;
-        }
-        return pec15Table;
-    }
-
-    constexpr static array<uint16_t, 256> pec15Table{init_PEC15_Table()};
-    static const uint16_t CRC15_POLY = 0x4599;
-
-    static constexpr uint16_t calculate_pec(const std::span<uint8_t> data) {
-        uint16_t remainder = 16;
-        uint16_t address;
-
-        for (uint i = 0; i < data.size(); i++) {
-            address = static_cast<uint8_t>(remainder >> 7) ^ data.data()[i];
-            remainder = (remainder << 8) ^ pec15Table[address];
-        }
-
-        return (remainder * 2);
-    }
-
-    static constexpr array<uint8_t, 4> add_pec(array<uint8_t, 2> command) {
-        array<uint8_t, 4> command_with_pec;
-        command_with_pec[0] = command[0];
-        command_with_pec[1] = command[1];
-        uint16_t pec = calculate_pec(command);
-        command_with_pec[2] = pec >> 8;
-        command_with_pec[3] = pec;
-        return command_with_pec;
-    }
-
-    static constexpr bool check_pec(std::span<uint8_t> data,
-                                    std::span<uint8_t, 2> pec) {
-        uint16_t real_pec{calculate_pec(data)};
-        uint8_t high = static_cast<uint8_t>(real_pec >> 8);
-        uint8_t low = static_cast<uint8_t>(real_pec);
-        return high == pec[0] && low == pec[1];
-    }
-
-    template <AdcMode mode>
-    static constexpr Command build_ADCV() {
-        Command adcv{};
-        adcv[0] = 0b00000010;
-
+    static constexpr uint16_t build_ADCV() {
         if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
-            adcv[0] |= 0b0;
-            adcv[1] |= 0b0 << 7;
+            return 0b0000001001100000;
         } else if constexpr (mode == AdcMode::KHZ_27 ||
                              mode == AdcMode::KHZ_14) {
-            adcv[0] |= 0b0;
-            adcv[1] |= 0b1 << 7;
+            return 0b0000001011100000;
         } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
-            adcv[0] |= 0b1;
-            adcv[1] |= 0b0 << 7;
+            return 0b0000001101100000;
         } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
-            adcv[0] |= 0b1;
-            adcv[1] |= 0b1 << 7;
+            return 0b0000001111100000;
         }
-
-        adcv[1] |= 0b1100000;
-
-        return adcv;
     }
 
-    template <AdcMode mode>
-    static constexpr Command build_ADAX() {
-        Command adax{};
-        adax[0] = 0b00000100;
-
+    static constexpr uint16_t build_ADCVSC() {
         if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
-            adax[0] |= 0b0;
-            adax[1] |= 0b0 << 7;
+            return 0b0000010001110111;
         } else if constexpr (mode == AdcMode::KHZ_27 ||
                              mode == AdcMode::KHZ_14) {
-            adax[0] |= 0b0;
-            adax[1] |= 0b1 << 7;
+            return 0b0000010011110111;
         } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
-            adax[0] |= 0b1;
-            adax[1] |= 0b0 << 7;
+            return 0b0000010101110111;
         } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
-            adax[0] |= 0b1;
-            adax[1] |= 0b1 << 7;
+            return 0b0000010111110111;
         }
-
-        adax[1] |= 0b1100000;
-
-        return adax;
     }
+
+    static constexpr uint16_t build_ADAX() {
+        if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
+            return 0b0000010001100000;
+        } else if constexpr (mode == AdcMode::KHZ_27 ||
+                             mode == AdcMode::KHZ_14) {
+            return 0b0000010011100000;
+        } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
+            return 0b0000010101100000;
+        } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
+            return 0b0000010111100000;
+        }
+    }
+
+    static constexpr array<uint8_t, 8> build_CRG() {
+        if constexpr (REFON) {
+            return {0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
+        } else {
+            return {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        }
+    }
+
+    // Commands
+    Command ADCV{build_ADCV()};
+    Command ADCVSC{build_ADCVSC()};
+    Command ADAX{build_ADAX()};
+    Command WRCFG{0};
+    Command RDCVA{0b0000000000000100};
+    Command RDCVB{0b0000000000000110};
+    Command RDAUXA{0b0000000000001100};
+    Command RDAUXB{0b0000000000001110};
+
+    // Registers
+    Register CRG{build_CRG()};
 
    public:
     consteval NetworkLink(const SPIConfig& config) : spi_link{config} {}
@@ -147,39 +110,15 @@ class NetworkLink {
     }
 
     void config() {
-        array<uint8_t, 10> command_packet;
-
-        Command WRCFG{0x00, 0x01};
-
-        array<uint8_t, 4> framed_command = add_pec(WRCFG);
-
-        std::copy_n(framed_command.begin(), 4, command_packet.begin());
-
-        // Harcoded WRCFG at the moment for testing
-        if constexpr (REFON) {
-            command_packet[4] = 0x04;
-        } else {
-            command_packet[4] = 0x00;
-        }
-        command_packet[5] = 0x00;
-        command_packet[6] = 0x00;
-        command_packet[7] = 0x00;
-        command_packet[8] = 0x00;
-        command_packet[9] = 0x00;
-
         spi_link.SPI_CS_turn_off();
-        spi_link.SPI_transmit(command_packet);
+        spi_link.SPI_transmit(WRCFG.command);
+        spi_link.SPI_transmit(CRG.reg);
         spi_link.SPI_CS_turn_on();
     }
 
     void start_cells_reading() {
-        // Hardcoded ADC mode at the moment, only to test
-        Command adcv{build_ADCV<AdcMode::KHZ_7>()};
-
-        array<uint8_t, 4> framed_command = add_pec(adcv);
-
         spi_link.SPI_CS_turn_off();
-        spi_link.SPI_transmit(framed_command);
+        spi_link.SPI_transmit(ADCV.command);
 
         // Conversion status valid only after N clock pulses
         array<uint8_t, (N_LTC6810 + 8 - 1) / 8> dummy{};
@@ -187,13 +126,8 @@ class NetworkLink {
     };
 
     void start_GPIOs_reading() {
-        // Hardcoded ADAX command at the moment, only to test
-        Command adax{build_ADAX<AdcMode::KHZ_7>()};
-
-        array<uint8_t, 4> framed_command = add_pec(adax);
-
         spi_link.SPI_CS_turn_off();
-        spi_link.SPI_transmit(framed_command);
+        spi_link.SPI_transmit(ADAX.command);
 
         // Conversion status valid only after N clock pulses
         array<uint8_t, (N_LTC6810 + 8 - 1) / 8> dummy{};
@@ -210,105 +144,67 @@ class NetworkLink {
         return false;
     }
 
-    array<uint16_t, N_LTC6810 * 6> read_cells() {
-        array<uint8_t, (6 + 2) * N_LTC6810> cell_group_A{};
-        array<uint8_t, (6 + 2) * N_LTC6810> cell_group_B{};
-        array<uint16_t, N_LTC6810 * 6> data{};
-        array<uint8_t, 4> command{};
-
-        const Command RDCVA{0x00, 0x04};
-        const Command RDCVB{0x00, 0x06};
+    array<Register, N_LTC6810 * 2> read_cells() {
+        array<Register, N_LTC6810> cell_group_A;
+        array<Register, N_LTC6810> cell_group_B;
 
         spi_link.SPI_CS_turn_off();
-        command = add_pec(RDCVA);
-        spi_link.SPI_transmit(command);
-        spi_link.SPI_receive(cell_group_A);
+        spi_link.SPI_transmit(RDCVA.command);
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            array<uint8_t, 8> reg;
+            spi_link.SPI_receive(reg);
+            cell_group_A[i] = Register(std::move(reg));
+        }
         spi_link.SPI_CS_turn_on();
 
         spi_link.SPI_CS_turn_off();
-        command = add_pec(RDCVB);
-        spi_link.SPI_transmit(command);
-        spi_link.SPI_receive(cell_group_B);
+        spi_link.SPI_transmit(RDCVB.command);
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            array<uint8_t, 8> reg;
+            spi_link.SPI_receive(reg);
+            cell_group_B[i] = Register(std::move(reg));
+        }
         spi_link.SPI_CS_turn_on();
 
-        for (uint i = 0; i < N_LTC6810; ++i) {
-            const auto offset = i * 8;
-
-            if (check_pec(
-                    std::span<uint8_t, 6>{cell_group_A.data() + offset, 6},
-                    std::span<uint8_t, 2>{cell_group_A.data() + offset + 6,
-                                          2})) {
-                data[i * 6 + 0] =
-                    cell_group_A[offset + 1] << 8 | cell_group_A[offset + 0];
-                data[i * 6 + 1] =
-                    cell_group_A[offset + 3] << 8 | cell_group_A[offset + 2];
-                data[i * 6 + 2] =
-                    cell_group_A[offset + 5] << 8 | cell_group_A[offset + 4];
-            }
-
-            if (check_pec(
-                    std::span<uint8_t, 6>{cell_group_B.data() + offset, 6},
-                    std::span<uint8_t, 2>{cell_group_B.data() + offset + 6,
-                                          2})) {
-                data[i * 6 + 3] =
-                    cell_group_B[offset + 1] << 8 | cell_group_B[offset + 0];
-                data[i * 6 + 4] =
-                    cell_group_B[offset + 3] << 8 | cell_group_B[offset + 2];
-                data[i * 6 + 5] =
-                    cell_group_B[offset + 5] << 8 | cell_group_B[offset + 4];
-            }
+        array<Register, N_LTC6810 * 2> result;
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            result[2 * i] = cell_group_A[i];
+            result[2 * i + 1] = cell_group_B[i];
         }
 
-        return data;
+        return result;
     }
 
-    array<uint16_t, N_LTC6810 * 4> read_GPIOs() {
-        array<uint8_t, (6 + 2) * N_LTC6810> auxiliary_group_A{};
-        array<uint8_t, (6 + 2) * N_LTC6810> auxiliary_group_B{};
-        array<uint16_t, N_LTC6810 * 4> data{};
-        array<uint8_t, 4> command{};
-
-        const Command RDAUXA{0x00, 0x0C};
-        const Command RDAUXB{0x00, 0x0E};
+    array<Register, N_LTC6810 * 2> read_GPIOs() {
+        array<Register, N_LTC6810> auxiliary_group_A;
+        array<Register, N_LTC6810> auxiliary_group_B;
 
         spi_link.SPI_CS_turn_off();
-        command = add_pec(RDAUXA);
-        spi_link.SPI_transmit(command);
-        spi_link.SPI_receive(auxiliary_group_A);
+        spi_link.SPI_transmit(RDAUXA.command);
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            array<uint8_t, 8> reg;
+            spi_link.SPI_receive(reg);
+            auxiliary_group_A[i] = Register(std::move(reg));
+        }
         spi_link.SPI_CS_turn_on();
 
         spi_link.SPI_CS_turn_off();
-        command = add_pec(RDAUXB);
-        spi_link.SPI_transmit(command);
-        spi_link.SPI_receive(auxiliary_group_B);
+        spi_link.SPI_transmit(RDAUXB.command);
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            array<uint8_t, 8> reg;
+            spi_link.SPI_receive(reg);
+            auxiliary_group_B[i] = Register(std::move(reg));
+        }
         spi_link.SPI_CS_turn_on();
 
-        for (uint i = 0; i < N_LTC6810; ++i) {
-            const auto offset = i * 8;
-
-            if (check_pec(
-                    std::span<uint8_t, 6>{auxiliary_group_A.data() + offset, 6},
-                    std::span<uint8_t, 2>{auxiliary_group_A.data() + offset + 6,
-                                          2})) {
-                data[i * 4 + 0] = auxiliary_group_A[offset + 3] << 8 |
-                                  auxiliary_group_A[offset + 2];
-                data[i * 4 + 1] = auxiliary_group_A[offset + 5] << 8 |
-                                  auxiliary_group_A[offset + 4];
-            }
-
-            if (check_pec(
-                    std::span<uint8_t, 6>{auxiliary_group_B.data() + offset, 6},
-                    std::span<uint8_t, 2>{auxiliary_group_B.data() + offset + 6,
-                                          2})) {
-                data[i * 4 + 2] = auxiliary_group_B[offset + 1] << 8 |
-                                  auxiliary_group_B[offset + 0];
-                data[i * 4 + 3] = auxiliary_group_B[offset + 3] << 8 |
-                                  auxiliary_group_B[offset + 2];
-            }
+        array<Register, N_LTC6810 * 2> result;
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            result[2 * i] = auxiliary_group_A[i];
+            result[2 * i + 1] = auxiliary_group_B[i];
         }
 
-        return data;
+        return result;
     }
 };
-
+}  // namespace LTC6810
 #endif
