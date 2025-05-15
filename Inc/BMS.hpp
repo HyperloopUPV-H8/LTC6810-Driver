@@ -5,6 +5,7 @@
 #include <span>
 
 #include "Battery.hpp"
+#include "Driver.hpp"
 #include "NetworkLink.hpp"
 #include "StateMachine.hpp"
 
@@ -90,12 +91,12 @@ class BMS {
 
     constexpr static uint32_t (*const get_tick)(void) = GET_TICK;
 
-    static inline LTC6810::NetworkLink<N_LTC6810, LTC6810::AdcMode::KHZ_7> link{
+    static inline LTC6810::Driver<N_LTC6810, LTC6810::AdcMode::KHZ_7> driver{
         LTC6810::SPIConfig{SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON,
                            SPI_CS_TURN_OFF}};
 
     static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
-    static inline array<uint16, N_LTC6810 * 4> GPIOs{};
+    static inline array<uint16_t, N_LTC6810 * 4> GPIOs{};
     static inline bool waked_up{false};
     static inline bool cells_read{false};
     static inline bool GPIOs_read{false};
@@ -122,8 +123,7 @@ class BMS {
     // Core SM
     static bool sleep_standby_guard() {
         if ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
-            link.wake_up();
-            link.config();
+            driver.wake_up();
             return true;
         }
         return false;
@@ -146,11 +146,11 @@ class BMS {
     }
     static bool standby_measure_guard() {
         if (!cells_read) {
-            link.start_cells_reading();
+            driver.start_cell_conversion();
             return true;
         }
         if (!GPIOs_read) {
-            link.start_GPIOs_reading();
+            driver.start_GPIOs_conversion();
             return true;
         }
         return false;
@@ -170,45 +170,17 @@ class BMS {
 
     static bool measure_refup_guard() { return false; }
     static bool measure_standby_guard() {
-        if (link.is_conv_done()) {
+        if (driver.is_conv_done()) {
             last_read = get_tick();
             if (!cells_read) {
-                auto conversion = link.read_cells();
-                uint i{0};
-                for (auto& battery : batteries) {
-                    if (conversion[i].is_pec_valid()) {
-                        auto data = conversion[i].get_16bit_data();
-                        for (uint j{0}; j < 3; ++j) {
-                            battery.cells[j].voltage = data[j] * 100e-6;
-                        }
-                    }
-                    ++i;
-                    if (conversion[i].is_pec_valid()) {
-                        auto data = conversion[i].get_16bit_data();
-                        for (uint j{0}; j < 3; ++j) {
-                            battery.cells[j + 3].voltage = data[j] * 1e-4;
-                        }
-                    }
-                    ++i;
-                    battery.update_total_voltage();
-                }
+                driver.read_cells();
+                //TODO
                 cells_read = true;
                 return true;
             }
             if (!GPIOs_read) {
-                auto conversion = link.read_GPIOs();
-                uint i{0};
-                for (auto& battery : batteries) {
-                    const auto offset{i * 2};
-                    if (conversion[offset].is_pec_valid()) {
-                        auto data = conversion[offset].get_16bit_data();
-                        auto resistance =
-                            (10000 * data[i] * 1e-4) / 3 + data[i] * 1e-4;
-                        battery.temperature_1 = (resistance - 100) / 3.85;
-                        battery.temperature_2 = data[2] * 750e-6;
-                    }
-                    ++i;
-                }
+                driver.read_GPIOs();
+                //TODO
                 GPIOs_read = true;
                 return true;
             }
