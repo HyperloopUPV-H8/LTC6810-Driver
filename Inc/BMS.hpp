@@ -9,6 +9,8 @@
 #include "NetworkLink.hpp"
 #include "StateMachine.hpp"
 
+#define N_CELLS 6
+
 const uint32_t TIME_SLEEP{1800};
 const uint32_t TIME_REFUP{4400};
 
@@ -22,7 +24,7 @@ enum class CoreState {
 };
 enum IsoSPIState { IDLE, READY, ACTIVE };
 
-template <size_t N_LTC6810, size_t N_CELLS,
+template <size_t N_LTC6810,
           void (*const SPI_TRANSMIT)(const std::span<uint8_t>),
           void (*const SPI_RECEIVE)(std::span<uint8_t>),
           void (*const SPI_CS_TURN_ON)(void),
@@ -173,14 +175,26 @@ class BMS {
         if (driver.is_conv_done()) {
             last_read = get_tick();
             if (!cells_read) {
-                driver.read_cells();
-                //TODO
+                auto cells = driver.read_cells();
+                for (uint i{}; i < N_LTC6810; ++i) {
+                    for (uint j{}; j < N_CELLS; ++j) {
+                        if (cells[i][j]) {
+                            batteries[i].cells[j] = cells[i][j].value();
+                        }
+                    }
+                }
                 cells_read = true;
                 return true;
             }
             if (!GPIOs_read) {
-                driver.read_GPIOs();
-                //TODO
+                auto GPIOs = driver.read_GPIOs();
+                for (uint i{}; i < N_LTC6810; ++i) {
+                    for (uint j{}; j < 4; ++j) {
+                        if (GPIOs[i][j]) {
+                            batteries[i].GPIOs[j] = GPIOs[i][j].value();
+                        }
+                    }
+                }
                 GPIOs_read = true;
                 return true;
             }

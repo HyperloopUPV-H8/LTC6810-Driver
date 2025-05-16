@@ -55,9 +55,9 @@ struct Command {
 };
 
 struct Register {
-    array<uint8_t, 8> reg;
+    array<uint8_t, 8> reg{};
 
-    constexpr Register() : reg{} {}
+    constexpr Register() = default;
     constexpr Register(array<uint8_t, 8>&& reg) : reg(std::move(reg)) {}
     constexpr Register(array<uint8_t, 6>&& data) {
         std::move(data.begin(), data.end(), reg.begin());

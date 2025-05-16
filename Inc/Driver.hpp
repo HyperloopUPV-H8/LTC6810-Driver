@@ -3,6 +3,8 @@
 
 #include "NetworkLink.hpp"
 
+#define ADC_RESOLUTION 100e-6  // 100 microV
+
 #define REFON 1
 
 using std::array;
@@ -99,18 +101,48 @@ class Driver {
 
     bool is_conv_done() { return link.is_conv_done(); }
 
-    array<array<float, 6>, N_LTC6810> read_cells() {
-        [[maybe_unused]] array<Register, N_LTC6810> CVA{link.read(RDCVA)};
-        [[maybe_unused]] array<Register, N_LTC6810> CVB{link.read(RDCVB)};
-        // TODO
-        return {};
+    array<array<std::optional<float>, 6>, N_LTC6810> read_cells() {
+        array<Register, N_LTC6810> CVA{link.read(RDCVA)};
+        array<Register, N_LTC6810> CVB{link.read(RDCVB)};
+
+        array<array<std::optional<float>, 6>, N_LTC6810> cells{};
+
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            for (auto j{0}; j < 6; ++j) {
+                if (CVA[i].is_pec_valid()) {
+                    auto data_CVA = CVA[i].get_16bit_data();
+                    cells[i][j] = data_CVA[j] * ADC_RESOLUTION;
+                }
+                if (CVB[i].is_pec_valid()) {
+                    auto data_CVB = CVB[i].get_16bit_data();
+                    cells[i][j] = data_CVB[j - 3] * ADC_RESOLUTION;
+                }
+            }
+        }
+        return cells;
     }
 
-    array<array<uint16_t, 4>, N_LTC6810> read_GPIOs() {
-        [[maybe_unused]] array<Register, N_LTC6810> AUXA{link.read(RDAUXA)};
-        [[maybe_unused]] array<Register, N_LTC6810> AUXB{link.read(RDAUXB)};
-        // TODO
-        return {};
+    array<array<std::optional<uint16_t>, 4>, N_LTC6810> read_GPIOs() {
+        array<Register, N_LTC6810> AUXA{link.read(RDAUXA)};
+        array<Register, N_LTC6810> AUXB{link.read(RDAUXB)};
+
+        array<array<std::optional<uint16_t>, 4>, N_LTC6810> GPIOs;
+
+        for (uint i{0}; i < N_LTC6810; ++i) {
+            if (AUXA[i].is_pec_valid()) {
+                auto data_AUXA = AUXA[i].get_16bit_data();
+                GPIOs[i][0] = data_AUXA[1];
+                GPIOs[i][1] = data_AUXA[2];
+            }
+
+            if (AUXB[i].is_pec_valid()) {
+                auto data_AUXB = AUXB[i].get_16bit_data();
+                GPIOs[i][2] = data_AUXB[0];
+                GPIOs[i][3] = data_AUXB[1];
+            }
+        }
+
+        return GPIOs;
     }
 };
 }  // namespace LTC6810
