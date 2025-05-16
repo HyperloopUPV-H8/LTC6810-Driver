@@ -43,9 +43,10 @@ class BMS {
             make_state(CoreState::MEASURING_CELLS, measure_cells,
                        LTC6810::Transition{CoreState::MEASURING_GPIOS,
                                            conversion_done_guard});
-        constexpr LTC6810::State reading_cells = make_state(
-            CoreState::READING_CELLS, read_cells,
-            LTC6810::Transition{CoreState::RESET, +[]() { return true; }});
+        constexpr LTC6810::State reading_cells =
+            make_state(CoreState::READING_CELLS, read_cells,
+                       LTC6810::Transition{CoreState::MEASURING_GPIOS,
+                                           +[]() { return true; }});
         constexpr LTC6810::State measuring_gpios =
             make_state(CoreState::MEASURING_GPIOS, measure_GPIOs,
                        LTC6810::Transition{CoreState::READING_GPIOS,
@@ -126,7 +127,6 @@ class BMS {
             GPIOs_read = false;
         }
         core_sm.update();
-        isospi_sm.update();
     }
 
     static array<Battery<N_CELLS>, N_LTC6810>& get_data() { return batteries; }
