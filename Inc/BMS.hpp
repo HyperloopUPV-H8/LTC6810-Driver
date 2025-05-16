@@ -33,7 +33,7 @@ class BMS {
     static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
         constexpr LTC6810::State sleep = make_state(
             CoreState::SLEEP, sleep_action,
-            LTC6810::Transition{CoreState::STANDBY, period_timeout_guard});
+            LTC6810::Transition{CoreState::STANDBY, sleep_standby_guard});
         constexpr LTC6810::State standby =
             make_state(CoreState::STANDBY, standby_action,
                        LTC6810::Transition{CoreState::SLEEP, sleep_guard},
@@ -71,16 +71,11 @@ class BMS {
 
     static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
     static inline array<uint16_t, N_LTC6810 * 4> GPIOs{};
-    static inline bool waked_up{false};
-    static inline bool cells_read{false};
-    static inline bool GPIOs_read{false};
     static inline uint32_t current_time{};
     static inline uint32_t sleep_reference{};
     static inline uint32_t last_read{};
-    static inline uint32_t read_time{};
 
     // Actions
-    // Core SM
     static void sleep_action() {}
     static void standby_action() { sleep_reference = get_tick(); }
     static void measure_cells() { driver.start_cell_conversion(); }
@@ -104,10 +99,17 @@ class BMS {
                 }
             }
         }
+        last_read = get_tick();
     }
 
     // LTC6810::Transitions
-    // Core SM
+    static bool sleep_standby_guard() {
+        if ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
+            driver.wake_up();
+            return true;
+        }
+        return false;
+    }
     static bool period_timeout_guard() {
         return ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS);
     }
@@ -121,11 +123,6 @@ class BMS {
    public:
     static void update() {
         current_time = get_tick();
-        uint32_t measure_time{(current_time - last_read) * TICK_RESOLUTION_MS};
-        if (measure_time >= PERIOD_MS) {
-            cells_read = false;
-            GPIOs_read = false;
-        }
         core_sm.update();
     }
 
