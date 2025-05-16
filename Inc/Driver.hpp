@@ -108,15 +108,17 @@ class Driver {
         array<array<std::optional<float>, 6>, N_LTC6810> cells{};
 
         for (uint i{0}; i < N_LTC6810; ++i) {
-            for (auto j{0}; j < 6; ++j) {
-                if (CVA[i].is_pec_valid()) {
-                    auto data_CVA = CVA[i].get_16bit_data();
-                    cells[i][j] = data_CVA[j] * ADC_RESOLUTION;
-                }
-                if (CVB[i].is_pec_valid()) {
-                    auto data_CVB = CVB[i].get_16bit_data();
-                    cells[i][j] = data_CVB[j - 3] * ADC_RESOLUTION;
-                }
+            if (CVA[i].is_pec_valid()) {
+                auto data_CVA = CVA[i].get_16bit_data();
+                cells[i][0] = data_CVA[0] * ADC_RESOLUTION;
+                cells[i][1] = data_CVA[1] * ADC_RESOLUTION;
+                cells[i][2] = data_CVA[2] * ADC_RESOLUTION;
+            }
+            if (CVB[i].is_pec_valid()) {
+                auto data_CVB = CVB[i].get_16bit_data();
+                cells[i][3] = data_CVB[0] * ADC_RESOLUTION;
+                cells[i][4] = data_CVB[1] * ADC_RESOLUTION;
+                cells[i][5] = data_CVB[2] * ADC_RESOLUTION;
             }
         }
         return cells;

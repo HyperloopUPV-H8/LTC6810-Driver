@@ -58,12 +58,17 @@ class NetworkLink {
             registers[i] = Register(std::move(reg));
         }
 
+        spi_link.SPI_CS_turn_on();
+
         return registers;
     }
 
     void write(Command command, Register reg) {}
 
-    void send(Command command) {}
+    void send(Command command) {
+        spi_link.SPI_CS_turn_off();
+        spi_link.SPI_transmit(command.command);
+    }
 };
 }  // namespace LTC6810
 #endif

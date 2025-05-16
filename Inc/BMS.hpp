@@ -41,7 +41,7 @@ class BMS {
                                            period_timeout_guard});
         constexpr LTC6810::State measuring_cells =
             make_state(CoreState::MEASURING_CELLS, measure_cells,
-                       LTC6810::Transition{CoreState::MEASURING_GPIOS,
+                       LTC6810::Transition{CoreState::READING_CELLS,
                                            conversion_done_guard});
         constexpr LTC6810::State reading_cells =
             make_state(CoreState::READING_CELLS, read_cells,
