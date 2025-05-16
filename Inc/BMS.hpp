@@ -17,12 +17,11 @@ const uint32_t TIME_REFUP{4400};
 enum class CoreState {
     SLEEP,
     STANDBY,
-    REFUP,
-    MEASURE,
-    EXTENDED_BALANCING,
-    DTM_MEASURE
+    MEASURING_CELLS,
+    READING_CELLS,
+    MEASURING_GPIOS,
+    READING_GPIOS
 };
-enum IsoSPIState { IDLE, READY, ACTIVE };
 
 template <size_t N_LTC6810,
           void (*const SPI_TRANSMIT)(const std::span<uint8_t>),
@@ -31,65 +30,37 @@ template <size_t N_LTC6810,
           void (*const SPI_CS_TURN_OFF)(void), uint32_t (*const GET_TICK)(void),
           uint8_t TICK_RESOLUTION_MS, uint32_t PERIOD_MS>
 class BMS {
-    static consteval LTC6810::StateMachine<CoreState, 6, 16> make_core_sm() {
+    static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
         constexpr LTC6810::State sleep = make_state(
             CoreState::SLEEP, sleep_action,
-            LTC6810::Transition{CoreState::STANDBY, sleep_standby_guard});
-        constexpr LTC6810::State standby = make_state(
-            CoreState::STANDBY, standby_action,
-            LTC6810::Transition{CoreState::SLEEP, standby_sleep_guard},
-            LTC6810::Transition{CoreState::REFUP, standby_refup_guard},
-            LTC6810::Transition{CoreState::MEASURE, standby_measure_guard},
-            LTC6810::Transition{CoreState::EXTENDED_BALANCING,
-                                standby_extended_balancing_guard});
-        constexpr LTC6810::State refup = make_state(
-            CoreState::REFUP, refup_action,
-            LTC6810::Transition{CoreState::SLEEP, refup_sleep_guard},
-            LTC6810::Transition{CoreState::STANDBY, refup_standby_guard},
-            LTC6810::Transition{CoreState::MEASURE, refup_measure_guard},
-            LTC6810::Transition{CoreState::EXTENDED_BALANCING,
-                                refup_extended_balancing_guard});
-        constexpr LTC6810::State measure = make_state(
-            CoreState::MEASURE, measure_action,
-            LTC6810::Transition{CoreState::REFUP, measure_refup_guard},
-            LTC6810::Transition{CoreState::STANDBY, measure_standby_guard});
-        constexpr LTC6810::State extended_balancing = make_state(
-            CoreState::EXTENDED_BALANCING, extended_balancing_action,
-            LTC6810::Transition{CoreState::SLEEP,
-                                extended_balancing_sleep_guard},
-            LTC6810::Transition{CoreState::STANDBY,
-                                extended_balancing_standby_guard},
-            LTC6810::Transition{CoreState::DTM_MEASURE,
-                                extended_balancing_dtm_measure_guard});
-        constexpr LTC6810::State dtm_measure = make_state(
-            CoreState::DTM_MEASURE, dtm_measure_action,
-            LTC6810::Transition{CoreState::STANDBY, dtm_measure_standby_guard},
-            LTC6810::Transition{CoreState::EXTENDED_BALANCING,
-                                dtm_measure_extended_balancing_guard});
+            LTC6810::Transition{CoreState::STANDBY, period_timeout_guard});
+        constexpr LTC6810::State standby =
+            make_state(CoreState::STANDBY, standby_action,
+                       LTC6810::Transition{CoreState::SLEEP, sleep_guard},
+                       LTC6810::Transition{CoreState::MEASURING_CELLS,
+                                           period_timeout_guard});
+        constexpr LTC6810::State measuring_cells =
+            make_state(CoreState::MEASURING_CELLS, measure_cells,
+                       LTC6810::Transition{CoreState::MEASURING_GPIOS,
+                                           conversion_done_guard});
+        constexpr LTC6810::State reading_cells = make_state(
+            CoreState::READING_CELLS, read_cells,
+            LTC6810::Transition{CoreState::RESET, +[]() { return true; }});
+        constexpr LTC6810::State measuring_gpios =
+            make_state(CoreState::MEASURING_GPIOS, measure_GPIOs,
+                       LTC6810::Transition{CoreState::READING_GPIOS,
+                                           conversion_done_guard});
+        constexpr LTC6810::State reading_gpios = make_state(
+            CoreState::READING_GPIOS, read_GPIOs,
+            LTC6810::Transition{CoreState::STANDBY, +[]() { return true; }});
 
-        return make_state_machine(CoreState::SLEEP, sleep, standby, refup,
-                                  measure, extended_balancing, dtm_measure);
+        return make_state_machine(CoreState::SLEEP, sleep, standby,
+                                  measuring_cells, reading_cells,
+                                  measuring_gpios, reading_gpios);
     }
 
-    static consteval LTC6810::StateMachine<IsoSPIState, 3, 4> make_isospi_sm() {
-        constexpr LTC6810::State idle = make_state(
-            IsoSPIState::IDLE, idle_action,
-            LTC6810::Transition{IsoSPIState::READY, idle_ready_guard});
-        constexpr LTC6810::State ready = make_state(
-            IsoSPIState::READY, ready_action,
-            LTC6810::Transition{IsoSPIState::IDLE, ready_idle_guard},
-            LTC6810::Transition{IsoSPIState::ACTIVE, ready_active_guard});
-        constexpr LTC6810::State active = make_state(
-            IsoSPIState::ACTIVE, active_action,
-            LTC6810::Transition{IsoSPIState::READY, active_ready_guard});
-
-        return make_state_machine(IsoSPIState::IDLE, idle, ready, active);
-    }
-
-    static inline LTC6810::StateMachine<CoreState, 6, 16> core_sm{
+    static inline LTC6810::StateMachine<CoreState, 6, 7> core_sm{
         make_core_sm()};
-    static inline LTC6810::StateMachine<IsoSPIState, 3, 4> isospi_sm{
-        make_isospi_sm()};
 
     constexpr static uint32_t (*const get_tick)(void) = GET_TICK;
 
@@ -111,109 +82,40 @@ class BMS {
     // Core SM
     static void sleep_action() {}
     static void standby_action() { sleep_reference = get_tick(); }
-    static void refup_action() { sleep_reference = get_tick(); }
-    static void measure_action() {}
-    static void extended_balancing_action() {}
-    static void dtm_measure_action() {}
-
-    // IsoSPI SM
-    static void idle_action() {}
-    static void ready_action() {}
-    static void active_action() {}
+    static void measure_cells() { driver.start_cell_conversion(); }
+    static void read_cells() {
+        auto cells = driver.read_cells();
+        for (uint i{}; i < N_LTC6810; ++i) {
+            for (uint j{}; j < N_CELLS; ++j) {
+                if (cells[i][j]) {
+                    batteries[i].cells[j] = cells[i][j].value();
+                }
+            }
+        }
+    }
+    static void measure_GPIOs() { driver.start_GPIOs_conversion(); }
+    static void read_GPIOs() {
+        auto GPIOs = driver.read_GPIOs();
+        for (uint i{}; i < N_LTC6810; ++i) {
+            for (uint j{}; j < 4; ++j) {
+                if (GPIOs[i][j]) {
+                    batteries[i].GPIOs[j] = GPIOs[i][j].value();
+                }
+            }
+        }
+    }
 
     // LTC6810::Transitions
     // Core SM
-    static bool sleep_standby_guard() {
-        if ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
-            driver.wake_up();
-            return true;
-        }
-        return false;
+    static bool period_timeout_guard() {
+        return ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS);
     }
-
-    static bool standby_sleep_guard() {
+    static bool sleep_guard() {
         uint32_t sleep_time{(current_time - sleep_reference) *
                             TICK_RESOLUTION_MS};
-        if (sleep_time >= TIME_SLEEP) {
-            return true;
-        }
-        return false;
+        return sleep_time >= TIME_SLEEP;
     }
-    static bool standby_refup_guard() {
-        uint32_t time{(current_time - sleep_reference) * TICK_RESOLUTION_MS};
-        if (REFON && time >= TIME_REFUP) {
-            return true;
-        }
-        return false;
-    }
-    static bool standby_measure_guard() {
-        if (!cells_read) {
-            driver.start_cell_conversion();
-            return true;
-        }
-        if (!GPIOs_read) {
-            driver.start_GPIOs_conversion();
-            return true;
-        }
-        return false;
-    }
-    static bool standby_extended_balancing_guard() { return false; }
-
-    static bool refup_sleep_guard() {
-        uint32_t time{(current_time - sleep_reference) * TICK_RESOLUTION_MS};
-        if (time >= TIME_SLEEP) {
-            return true;
-        }
-        return false;
-    }
-    static bool refup_standby_guard() { return false; }
-    static bool refup_measure_guard() { return false; }
-    static bool refup_extended_balancing_guard() { return false; }
-
-    static bool measure_refup_guard() { return false; }
-    static bool measure_standby_guard() {
-        if (driver.is_conv_done()) {
-            last_read = get_tick();
-            if (!cells_read) {
-                auto cells = driver.read_cells();
-                for (uint i{}; i < N_LTC6810; ++i) {
-                    for (uint j{}; j < N_CELLS; ++j) {
-                        if (cells[i][j]) {
-                            batteries[i].cells[j] = cells[i][j].value();
-                        }
-                    }
-                }
-                cells_read = true;
-                return true;
-            }
-            if (!GPIOs_read) {
-                auto GPIOs = driver.read_GPIOs();
-                for (uint i{}; i < N_LTC6810; ++i) {
-                    for (uint j{}; j < 4; ++j) {
-                        if (GPIOs[i][j]) {
-                            batteries[i].GPIOs[j] = GPIOs[i][j].value();
-                        }
-                    }
-                }
-                GPIOs_read = true;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    static bool extended_balancing_sleep_guard() { return false; }
-    static bool extended_balancing_standby_guard() { return false; }
-    static bool extended_balancing_dtm_measure_guard() { return false; }
-
-    static bool dtm_measure_standby_guard() { return false; }
-    static bool dtm_measure_extended_balancing_guard() { return false; }
-
-    // IsoSPI SM
-    static bool idle_ready_guard() { return false; }
-    static bool ready_idle_guard() { return false; }
-    static bool ready_active_guard() { return false; }
-    static bool active_ready_guard() { return false; }
+    static bool conversion_done_guard() { return driver.is_conv_done(); }
 
    public:
     static void update() {
