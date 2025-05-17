@@ -24,6 +24,8 @@ template <size_t N_LTC6810>
 class NetworkLink {
     const SPIConfig spi_link;
 
+    static inline Command PLADC{0b0000011100010100};
+
    public:
     consteval NetworkLink(const SPIConfig& config) : spi_link{config} {}
 
@@ -39,11 +41,16 @@ class NetworkLink {
     bool is_conv_done() const {
         std::array<uint8_t, 1> data;
 
+        spi_link.SPI_CS_turn_off();
+        spi_link.SPI_transmit(PLADC.command);
+
         for (uint i{0}; i < (N_LTC6810 / 8) + 1; ++i) {
             spi_link.SPI_receive(data);
         }
         spi_link.SPI_receive(data);
-        
+
+        spi_link.SPI_CS_turn_on();
+
         return data[0] > 0;
     }
 
