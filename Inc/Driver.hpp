@@ -80,6 +80,7 @@ class Driver {
     Command RDCVB{0b0000000000000110};
     Command RDAUXA{0b0000000000001100};
     Command RDAUXB{0b0000000000001110};
+    Command RDSTATA{0b0000000000010000};
 
     // Registers
     Register CFG{build_CRG()};
@@ -94,16 +95,17 @@ class Driver {
         link.write(WRCFG, CFG);
     }
 
-    void start_cell_conversion() { link.send(ADCV); }
+    void start_cell_conversion() { link.send(ADCVSC); }
     void start_GPIOs_conversion() { link.send(ADAX); }
 
     bool is_conv_done() { return link.is_conv_done(); }
 
-    array<array<std::optional<float>, 6>, N_LTC6810> read_cells() {
+    array<array<std::optional<float>, 7>, N_LTC6810> read_cells() {
         array<Register, N_LTC6810> CVA{link.read(RDCVA)};
         array<Register, N_LTC6810> CVB{link.read(RDCVB)};
+        array<Register, N_LTC6810> STATA{link.read(RDSTATA)};
 
-        array<array<std::optional<float>, 6>, N_LTC6810> cells{};
+        array<array<std::optional<float>, 7>, N_LTC6810> cells{};
 
         for (uint i{0}; i < N_LTC6810; ++i) {
             if (CVA[i].is_pec_valid()) {
@@ -117,6 +119,10 @@ class Driver {
                 cells[i][3] = data_CVB[0] * ADC_RESOLUTION;
                 cells[i][4] = data_CVB[1] * ADC_RESOLUTION;
                 cells[i][5] = data_CVB[2] * ADC_RESOLUTION;
+            }
+            if (STATA[i].is_pec_valid()) {
+                auto data_STATA = STATA[i].get_16bit_data();
+                cells[i][6] = data_STATA[0] * ADC_RESOLUTION * 10;
             }
         }
         return cells;

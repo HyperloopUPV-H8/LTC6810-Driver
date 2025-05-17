@@ -65,7 +65,7 @@ class BMS {
 
     constexpr static uint32_t (*const get_tick)(void) = GET_TICK;
 
-    static inline LTC6810::Driver<N_LTC6810, LTC6810::AdcMode::KHZ_7> driver{
+    static inline LTC6810::Driver<N_LTC6810, LTC6810::AdcMode::HZ_26> driver{
         LTC6810::SPIConfig{SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON,
                            SPI_CS_TURN_OFF}};
 
@@ -86,6 +86,9 @@ class BMS {
                 if (cells[i][j]) {
                     batteries[i].cells[j] = cells[i][j].value();
                 }
+            }
+            if (cells[i][6]) {
+                batteries[i].total_voltage = cells[i][6].value();
             }
         }
     }
