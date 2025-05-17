@@ -96,8 +96,6 @@ class Driver {
 
     void start_cell_conversion() { link.send(ADCV); }
     void start_GPIOs_conversion() { link.send(ADAX); }
-    // CAREFUL!!!! At the moment, you are not taking into account that the first
-    // N_LTC6810 bits aren't valid!
 
     bool is_conv_done() { return link.is_conv_done(); }
 

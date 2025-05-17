@@ -42,9 +42,9 @@ constexpr uint16_t calculate_pec(std::span<uint8_t> data) {
 }
 
 struct Command {
-    array<uint8_t, 4> command;
+    array<uint8_t, 4> command{};
 
-    constexpr Command() : command{} {}
+    constexpr Command() = default;
     constexpr Command(uint16_t data) {
         command[0] = data >> 8;
         command[1] = data;

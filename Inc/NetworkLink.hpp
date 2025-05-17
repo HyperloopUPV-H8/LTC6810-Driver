@@ -27,7 +27,7 @@ class NetworkLink {
    public:
     consteval NetworkLink(const SPIConfig& config) : spi_link{config} {}
 
-    void wake_up() {
+    void wake_up() const {
         array<uint8_t, 1> byte{0XFF};
         for (uint i{0}; i < N_LTC6810; ++i) {
             spi_link.SPI_CS_turn_off();
@@ -36,17 +36,18 @@ class NetworkLink {
         }
     }
 
-    bool is_conv_done() {
+    bool is_conv_done() const {
         std::array<uint8_t, 1> data;
-        spi_link.SPI_receive(data);
-        if (data[0] > 0) {
-            spi_link.SPI_CS_turn_on();
-            return true;
+
+        for (uint i{0}; i < (N_LTC6810 / 8) + 1; ++i) {
+            spi_link.SPI_receive(data);
         }
-        return false;
+        spi_link.SPI_receive(data);
+        
+        return data[0] > 0;
     }
 
-    array<Register, N_LTC6810> read(Command command) {
+    array<Register, N_LTC6810> read(Command command) const {
         array<Register, N_LTC6810> registers;
 
         spi_link.SPI_CS_turn_off();
@@ -63,11 +64,17 @@ class NetworkLink {
         return registers;
     }
 
-    void write(Command command, Register reg) {}
-
-    void send(Command command) {
+    void write(Command command, Register reg) const {
         spi_link.SPI_CS_turn_off();
         spi_link.SPI_transmit(command.command);
+        spi_link.SPI_transmit(reg.reg);
+        spi_link.SPI_CS_turn_on();
+    }
+
+    void send(Command command) const {
+        spi_link.SPI_CS_turn_off();
+        spi_link.SPI_transmit(command.command);
+        spi_link.SPI_CS_turn_on();
     }
 };
 }  // namespace LTC6810
