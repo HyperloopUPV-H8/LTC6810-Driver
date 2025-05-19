@@ -128,23 +128,23 @@ class Driver {
         return cells;
     }
 
-    array<array<std::optional<uint16_t>, 4>, N_LTC6810> read_GPIOs() {
+    array<array<std::optional<float>, 4>, N_LTC6810> read_GPIOs() {
         array<Register, N_LTC6810> AUXA{link.read(RDAUXA)};
         array<Register, N_LTC6810> AUXB{link.read(RDAUXB)};
 
-        array<array<std::optional<uint16_t>, 4>, N_LTC6810> GPIOs;
+        array<array<std::optional<float>, 4>, N_LTC6810> GPIOs;
 
         for (uint i{0}; i < N_LTC6810; ++i) {
             if (AUXA[i].is_pec_valid()) {
                 auto data_AUXA = AUXA[i].get_16bit_data();
-                GPIOs[i][0] = data_AUXA[1];
-                GPIOs[i][1] = data_AUXA[2];
+                GPIOs[i][0] = data_AUXA[1] * ADC_RESOLUTION;
+                GPIOs[i][1] = data_AUXA[2] * ADC_RESOLUTION;
             }
 
             if (AUXB[i].is_pec_valid()) {
                 auto data_AUXB = AUXB[i].get_16bit_data();
-                GPIOs[i][2] = data_AUXB[0];
-                GPIOs[i][3] = data_AUXB[1];
+                GPIOs[i][2] = data_AUXB[0] * ADC_RESOLUTION;
+                GPIOs[i][3] = data_AUXB[1] * ADC_RESOLUTION;
             }
         }
 
