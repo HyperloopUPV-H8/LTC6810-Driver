@@ -9,10 +9,10 @@
 #include "NetworkLink.hpp"
 #include "StateMachine.hpp"
 
-#define N_CELLS 6
-
-const uint32_t TIME_SLEEP{1800};
-const uint32_t TIME_REFUP{4400};
+constexpr size_t N_CELLS{6};
+constexpr bool DIAG{true};
+constexpr uint32_t TIME_SLEEP{1800};
+constexpr uint32_t TIME_REFUP{4400};
 
 enum class CoreState {
     SLEEP,
@@ -23,12 +23,29 @@ enum class CoreState {
     READING_GPIOS
 };
 
+struct BMSDiag {
+    uint n_fail_conv{};
+    uint n_success_conv{};
+    float success_conv_rate{};
+    uint32_t reading_period{};
+
+    void calculate_rate() { success_conv_rate = n_success_conv / n_fail_conv; }
+    void conv_succesfull() {
+        ++n_success_conv;
+        calculate_rate();
+    };
+    void conv_failed() {
+        ++n_fail_conv;
+        calculate_rate();
+    }
+};
+
 template <size_t N_LTC6810,
           void (*const SPI_TRANSMIT)(const std::span<uint8_t>),
           void (*const SPI_RECEIVE)(std::span<uint8_t>),
           void (*const SPI_CS_TURN_ON)(void),
           void (*const SPI_CS_TURN_OFF)(void), uint32_t (*const GET_TICK)(void),
-          uint8_t TICK_RESOLUTION_MS, uint32_t PERIOD_MS>
+          uint8_t TICK_RESOLUTION_US, uint32_t PERIOD_US>
 class BMS {
     static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
         constexpr LTC6810::State sleep = make_state(
@@ -68,6 +85,7 @@ class BMS {
     static inline LTC6810::Driver<N_LTC6810, LTC6810::AdcMode::HZ_26> driver{
         LTC6810::SPIConfig{SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON,
                            SPI_CS_TURN_OFF}};
+    static inline BMSDiag bms_diag{};
 
     static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
     static inline array<uint16_t, N_LTC6810 * 4> GPIOs{};
@@ -85,11 +103,16 @@ class BMS {
             for (uint j{}; j < N_CELLS; ++j) {
                 if (cells[i][j]) {
                     batteries[i].cells[j] = cells[i][j].value();
+                    if constexpr (DIAG) {
+                        bms_diag.conv_succesfull();
+                    }
+                } else if constexpr (DIAG) {
+                    bms_diag.conv_failed();
                 }
             }
-            if (cells[i][6]) {
-                batteries[i].total_voltage = cells[i][6].value();
-            }
+        }
+        if (cells[i][6]) {
+            batteries[i].total_voltage = cells[i][6].value();
         }
     }
     static void measure_GPIOs() { driver.start_GPIOs_conversion(); }
@@ -99,26 +122,33 @@ class BMS {
             for (uint j{}; j < 4; ++j) {
                 if (GPIOs[i][j]) {
                     batteries[i].GPIOs[j] = GPIOs[i][j].value();
+                    if constexpr (DIAG) {
+                        bms_diag.conv_succesfull();
+                    }
+                } else if constexpr (DIAG) {
+                    bms_diag.conv_failed();
                 }
             }
         }
-        last_read = get_tick();
+        auto timestamp = get_tick();
+        bms_diag.reading_period = timestamp - last_read;
+        last_read = timestamp;
     }
 
     // LTC6810::Transitions
     static bool sleep_standby_guard() {
-        if ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS) {
+        if ((current_time - last_read) * TICK_RESOLUTION_US >= PERIOD_US) {
             driver.wake_up();
             return true;
         }
         return false;
     }
     static bool period_timeout_guard() {
-        return ((current_time - last_read) * TICK_RESOLUTION_MS >= PERIOD_MS);
+        return ((current_time - last_read) * TICK_RESOLUTION_US >= PERIOD_US);
     }
     static bool sleep_guard() {
         uint32_t sleep_time{(current_time - sleep_reference) *
-                            TICK_RESOLUTION_MS};
+                            TICK_RESOLUTION_US};
         return sleep_time >= TIME_SLEEP;
     }
     static bool conversion_done_guard() { return driver.is_conv_done(); }
@@ -130,5 +160,6 @@ class BMS {
     }
 
     static array<Battery<N_CELLS>, N_LTC6810>& get_data() { return batteries; }
+    static BMSDiag& get_diag() { return bms_diag; }
 };
 #endif
