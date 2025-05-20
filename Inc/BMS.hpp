@@ -110,9 +110,9 @@ class BMS {
                     bms_diag.conv_failed();
                 }
             }
-        }
-        if (cells[i][6]) {
-            batteries[i].total_voltage = cells[i][6].value();
+            if (cells[i][6]) {
+                batteries[i].total_voltage = cells[i][6].value();
+            }
         }
     }
     static void measure_GPIOs() { driver.start_GPIOs_conversion(); }
