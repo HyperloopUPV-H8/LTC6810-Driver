@@ -11,7 +11,7 @@ using std::array;
 
 namespace LTC6810 {
 
-enum class AdcMode {
+enum class AdcMode : uint8_t {
     KHZ_27,
     KHZ_14,
     KHZ_7,
@@ -22,44 +22,74 @@ enum class AdcMode {
     HZ_26
 };
 
-template <size_t N_LTC6810, AdcMode mode>
+template <size_t N_LTC6810>
 class Driver {
-    static constexpr uint16_t build_ADCV() {
-        if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
-            return 0b0000001001100000;
-        } else if constexpr (mode == AdcMode::KHZ_27 ||
-                             mode == AdcMode::KHZ_14) {
-            return 0b0000001011100000;
-        } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
-            return 0b0000001101100000;
-        } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
-            return 0b0000001111100000;
+    constexpr uint16_t build_ADCV(AdcMode mode) {
+        switch (mode) {
+            case AdcMode::HZ_422:
+            case AdcMode::KHZ_1:
+                return 0b0000001001100000;
+
+            case AdcMode::KHZ_27:
+            case AdcMode::KHZ_14:
+                return 0b0000001011100000;
+
+            case AdcMode::KHZ_7:
+            case AdcMode::KHZ_3:
+                return 0b0000001101100000;
+
+            case AdcMode::HZ_26:
+            case AdcMode::KHZ_2:
+                return 0b0000001111100000;
+
+            default:
+                return 0;
         }
     }
 
-    static constexpr uint16_t build_ADCVSC() {
-        if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
-            return 0b0000010001110111;
-        } else if constexpr (mode == AdcMode::KHZ_27 ||
-                             mode == AdcMode::KHZ_14) {
-            return 0b0000010011110111;
-        } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
-            return 0b0000010101110111;
-        } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
-            return 0b0000010111110111;
+    constexpr uint16_t build_ADCVSC(AdcMode mode) {
+        switch (mode) {
+            case AdcMode::HZ_422:
+            case AdcMode::KHZ_1:
+                return 0b0000010001110111;
+
+            case AdcMode::KHZ_27:
+            case AdcMode::KHZ_14:
+                return 0b0000010011110111;
+
+            case AdcMode::KHZ_7:
+            case AdcMode::KHZ_3:
+                return 0b0000010101110111;
+
+            case AdcMode::HZ_26:
+            case AdcMode::KHZ_2:
+                return 0b0000010111110111;
+
+            default:
+                return 0;
         }
     }
 
-    static constexpr uint16_t build_ADAX() {
-        if constexpr (mode == AdcMode::HZ_422 || mode == AdcMode::KHZ_1) {
-            return 0b0000010001100000;
-        } else if constexpr (mode == AdcMode::KHZ_27 ||
-                             mode == AdcMode::KHZ_14) {
-            return 0b0000010011100000;
-        } else if constexpr (mode == AdcMode::KHZ_7 || mode == AdcMode::KHZ_3) {
-            return 0b0000010101100000;
-        } else if constexpr (mode == AdcMode::HZ_26 || mode == AdcMode::KHZ_2) {
-            return 0b0000010111100000;
+    constexpr uint16_t build_ADAX(AdcMode mode) {
+        switch (mode) {
+            case AdcMode::HZ_422:
+            case AdcMode::KHZ_1:
+                return 0b0000010001100000;
+
+            case AdcMode::KHZ_27:
+            case AdcMode::KHZ_14:
+                return 0b0000010011100000;
+
+            case AdcMode::KHZ_7:
+            case AdcMode::KHZ_3:
+                return 0b0000010101100000;
+
+            case AdcMode::HZ_26:
+            case AdcMode::KHZ_2:
+                return 0b0000010111100000;
+
+            default:
+                return 0;
         }
     }
 
@@ -71,10 +101,12 @@ class Driver {
         }
     }
 
+    AdcMode current_mode{AdcMode::HZ_26};
+
     // Commands
-    Command ADCV{build_ADCV()};
-    Command ADCVSC{build_ADCVSC()};
-    Command ADAX{build_ADAX()};
+    Command ADCV{build_ADCV(current_mode)};
+    Command ADCVSC{build_ADCVSC(current_mode)};
+    Command ADAX{build_ADAX(current_mode)};
     Command WRCFG{0};
     Command RDCVA{0b0000000000000100};
     Command RDCVB{0b0000000000000110};
@@ -149,6 +181,16 @@ class Driver {
         }
 
         return GPIOs;
+    }
+
+    void faster_conv() {
+        if (static_cast<int>(current_mode) < 8) {
+            current_mode =
+                static_cast<AdcMode>(static_cast<int>(current_mode) + 1);
+            ADCV = build_ADCV(current_mode);
+            ADCVSC = build_ADCVSC(current_mode);
+            ADAX = build_ADAX(current_mode);
+        }
     }
 };
 }  // namespace LTC6810

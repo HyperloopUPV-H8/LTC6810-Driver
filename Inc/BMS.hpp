@@ -11,8 +11,8 @@
 
 constexpr size_t N_CELLS{6};
 constexpr bool DIAG{true};
-constexpr uint32_t TIME_SLEEP{1800};
-constexpr uint32_t TIME_REFUP{4400};
+constexpr uint32_t TIME_SLEEP_US{1800000};
+constexpr uint32_t TIME_REFUP_US{4400};
 
 enum class CoreState {
     SLEEP,
@@ -24,12 +24,19 @@ enum class CoreState {
 };
 
 struct BMSDiag {
+   private:
     uint n_fail_conv{};
     uint n_success_conv{};
+    void calculate_rate() {
+        success_conv_rate =
+            static_cast<float>(n_success_conv) / (n_success_conv + n_fail_conv);
+    }
+
+   public:
     float success_conv_rate{};
     uint32_t reading_period{};
+    uint32_t time_to_read{};
 
-    void calculate_rate() { success_conv_rate = n_success_conv / n_fail_conv; }
     void conv_succesfull() {
         ++n_success_conv;
         calculate_rate();
@@ -45,7 +52,7 @@ template <size_t N_LTC6810,
           void (*const SPI_RECEIVE)(std::span<uint8_t>),
           void (*const SPI_CS_TURN_ON)(void),
           void (*const SPI_CS_TURN_OFF)(void), uint32_t (*const GET_TICK)(void),
-          uint8_t TICK_RESOLUTION_US, uint32_t PERIOD_US>
+          uint32_t TICK_RESOLUTION_US, uint32_t PERIOD_US>
 class BMS {
     static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
         constexpr LTC6810::State sleep = make_state(
@@ -82,21 +89,29 @@ class BMS {
 
     constexpr static uint32_t (*const get_tick)(void) = GET_TICK;
 
-    static inline LTC6810::Driver<N_LTC6810, LTC6810::AdcMode::HZ_26> driver{
-        LTC6810::SPIConfig{SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON,
-                           SPI_CS_TURN_OFF}};
+    static inline LTC6810::Driver<N_LTC6810> driver{LTC6810::SPIConfig{
+        SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON, SPI_CS_TURN_OFF}};
+
     static inline BMSDiag bms_diag{};
+    static inline uint32_t init_conv{};
+    static inline uint32_t final_conv{};
 
     static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
     static inline array<uint16_t, N_LTC6810 * 4> GPIOs{};
+
     static inline uint32_t current_time{};
     static inline uint32_t sleep_reference{};
     static inline uint32_t last_read{};
 
     // Actions
     static void sleep_action() {}
-    static void standby_action() { sleep_reference = get_tick(); }
-    static void measure_cells() { driver.start_cell_conversion(); }
+    static void standby_action() {
+        sleep_reference = get_tick() * TICK_RESOLUTION_US;
+    }
+    static void measure_cells() {
+        init_conv = get_tick() * TICK_RESOLUTION_US;
+        driver.start_cell_conversion();
+    }
     static void read_cells() {
         auto cells = driver.read_cells();
         for (uint i{}; i < N_LTC6810; ++i) {
@@ -130,32 +145,39 @@ class BMS {
                 }
             }
         }
-        auto timestamp = get_tick();
+
+        final_conv = get_tick() * TICK_RESOLUTION_US;
+        bms_diag.time_to_read = final_conv - init_conv;
+        auto timestamp = get_tick() * TICK_RESOLUTION_US;
         bms_diag.reading_period = timestamp - last_read;
         last_read = timestamp;
+
+        if (bms_diag.reading_period > PERIOD_US + PERIOD_US * 0.1) {
+            driver.faster_conv();
+        }
     }
 
-    // LTC6810::Transitions
+    // Transitions
     static bool sleep_standby_guard() {
-        if ((current_time - last_read) * TICK_RESOLUTION_US >= PERIOD_US) {
+        if ((current_time - last_read) >= (PERIOD_US - bms_diag.time_to_read)) {
             driver.wake_up();
             return true;
         }
         return false;
     }
     static bool period_timeout_guard() {
-        return ((current_time - last_read) * TICK_RESOLUTION_US >= PERIOD_US);
+        auto period_time{current_time - last_read};
+        return (period_time >= (PERIOD_US - bms_diag.time_to_read) &&
+                period_time < TIME_SLEEP_US);
     }
     static bool sleep_guard() {
-        uint32_t sleep_time{(current_time - sleep_reference) *
-                            TICK_RESOLUTION_US};
-        return sleep_time >= TIME_SLEEP;
+        return (current_time - sleep_reference) >= TIME_SLEEP_US;
     }
     static bool conversion_done_guard() { return driver.is_conv_done(); }
 
    public:
     static void update() {
-        current_time = get_tick();
+        current_time = get_tick() * TICK_RESOLUTION_US;
         core_sm.update();
     }
 
