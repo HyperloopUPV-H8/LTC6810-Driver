@@ -11,8 +11,8 @@
 
 constexpr size_t N_CELLS{6};
 constexpr bool DIAG{true};
-constexpr uint32_t TIME_SLEEP_US{1800000};
-constexpr uint32_t TIME_REFUP_US{4400};
+constexpr int32_t TIME_SLEEP_US{1800000};
+constexpr int32_t TIME_REFUP_US{4400};
 
 enum class CoreState {
     SLEEP,
@@ -21,6 +21,22 @@ enum class CoreState {
     READING_CELLS,
     MEASURING_GPIOS,
     READING_GPIOS
+};
+
+template <typename T>
+concept BMSConfig = requires(T) {
+    { std::unsigned_integral<decltype(T::n_LTC6810)> };
+    {
+        T::SPI_transmit(std::declval<std::span<uint8_t>>())
+    } -> std::same_as<void>;
+    {
+        T::SPI_receive(std::declval<std::span<uint8_t>>())
+    } -> std::same_as<void>;
+    { T::SPI_CS_turn_off() } -> std::same_as<void>;
+    { T::SPI_CS_turn_on() } -> std::same_as<void>;
+    { T::get_tick() } -> std::same_as<int32_t>;
+    { std::integral<decltype(T::tick_resolution_us)> };
+    { std::integral<decltype(T::period_us)> };
 };
 
 struct BMSDiag {
@@ -34,8 +50,8 @@ struct BMSDiag {
 
    public:
     float success_conv_rate{};
-    uint32_t reading_period{};
-    uint32_t time_to_read{};
+    int32_t reading_period{};
+    int32_t time_to_read{};
 
     void conv_succesfull() {
         ++n_success_conv;
@@ -47,17 +63,13 @@ struct BMSDiag {
     }
 };
 
-template <size_t N_LTC6810,
-          void (*const SPI_TRANSMIT)(const std::span<uint8_t>),
-          void (*const SPI_RECEIVE)(std::span<uint8_t>),
-          void (*const SPI_CS_TURN_ON)(void),
-          void (*const SPI_CS_TURN_OFF)(void), uint32_t (*const GET_TICK)(void),
-          uint32_t TICK_RESOLUTION_US, uint32_t PERIOD_US>
+template <BMSConfig config>
 class BMS {
     static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
-        constexpr LTC6810::State sleep = make_state(
-            CoreState::SLEEP, sleep_action,
-            LTC6810::Transition{CoreState::STANDBY, sleep_standby_guard});
+        constexpr LTC6810::State sleep =
+            make_state(CoreState::SLEEP, sleep_action,
+                       LTC6810::Transition{CoreState::MEASURING_CELLS,
+                                           sleep_timeout_guard});
         constexpr LTC6810::State standby =
             make_state(CoreState::STANDBY, standby_action,
                        LTC6810::Transition{CoreState::SLEEP, sleep_guard},
@@ -87,34 +99,33 @@ class BMS {
     static inline LTC6810::StateMachine<CoreState, 6, 7> core_sm{
         make_core_sm()};
 
-    constexpr static uint32_t (*const get_tick)(void) = GET_TICK;
-
-    static inline LTC6810::Driver<N_LTC6810> driver{LTC6810::SPIConfig{
-        SPI_TRANSMIT, SPI_RECEIVE, SPI_CS_TURN_ON, SPI_CS_TURN_OFF}};
+    static inline LTC6810::Driver<config::n_LTC6810> driver{
+        LTC6810::SPIConfig{config::SPI_transmit, config::SPI_receive,
+                           config::SPI_CS_turn_off, config::SPI_CS_turn_on}};
 
     static inline BMSDiag bms_diag{};
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
-    static inline array<Battery<N_CELLS>, N_LTC6810> batteries{};
-    static inline array<uint16_t, N_LTC6810 * 4> GPIOs{};
+    static inline array<Battery<N_CELLS>, config::n_LTC6810> batteries{};
+    static inline array<uint16_t, config::n_LTC6810 * 4> GPIOs{};
 
-    static inline uint32_t current_time{};
-    static inline uint32_t sleep_reference{};
-    static inline uint32_t last_read{};
+    static inline int32_t current_time{};
+    static inline int32_t sleep_reference{};
+    static inline int32_t last_read{};
 
     // Actions
     static void sleep_action() {}
     static void standby_action() {
-        sleep_reference = get_tick() * TICK_RESOLUTION_US;
+        sleep_reference = config::get_tick() * config::tick_resolution_us;
     }
     static void measure_cells() {
-        init_conv = get_tick() * TICK_RESOLUTION_US;
+        init_conv = config::get_tick() * config::tick_resolution_us;
         driver.start_cell_conversion();
     }
     static void read_cells() {
         auto cells = driver.read_cells();
-        for (uint i{}; i < N_LTC6810; ++i) {
+        for (uint i{}; i < config::n_LTC6810; ++i) {
             for (uint j{}; j < N_CELLS; ++j) {
                 if (cells[i][j]) {
                     batteries[i].cells[j] = cells[i][j].value();
@@ -133,7 +144,7 @@ class BMS {
     static void measure_GPIOs() { driver.start_GPIOs_conversion(); }
     static void read_GPIOs() {
         auto GPIOs = driver.read_GPIOs();
-        for (uint i{}; i < N_LTC6810; ++i) {
+        for (uint i{}; i < config::n_LTC6810; ++i) {
             for (uint j{}; j < 4; ++j) {
                 if (GPIOs[i][j]) {
                     batteries[i].GPIOs[j] = GPIOs[i][j].value();
@@ -146,20 +157,22 @@ class BMS {
             }
         }
 
-        final_conv = get_tick() * TICK_RESOLUTION_US;
+        final_conv = config::get_tick() * config::tick_resolution_us;
         bms_diag.time_to_read = final_conv - init_conv;
-        auto timestamp = get_tick() * TICK_RESOLUTION_US;
+        auto timestamp = config::get_tick() * config::tick_resolution_us;
         bms_diag.reading_period = timestamp - last_read;
         last_read = timestamp;
 
-        if (bms_diag.reading_period > PERIOD_US + PERIOD_US * 0.1) {
+        if (bms_diag.reading_period >
+            config::period_us + config::period_us * 0.1) {
             driver.faster_conv();
         }
     }
 
     // Transitions
-    static bool sleep_standby_guard() {
-        if ((current_time - last_read) >= (PERIOD_US - bms_diag.time_to_read)) {
+    static bool sleep_timeout_guard() {
+        if ((current_time - last_read) >=
+            (config::period_us - bms_diag.time_to_read)) {
             driver.wake_up();
             return true;
         }
@@ -167,8 +180,7 @@ class BMS {
     }
     static bool period_timeout_guard() {
         auto period_time{current_time - last_read};
-        return (period_time >= (PERIOD_US - bms_diag.time_to_read) &&
-                period_time < TIME_SLEEP_US);
+        return (period_time >= (config::period_us - bms_diag.time_to_read));
     }
     static bool sleep_guard() {
         return (current_time - sleep_reference) >= TIME_SLEEP_US;
@@ -177,11 +189,13 @@ class BMS {
 
    public:
     static void update() {
-        current_time = get_tick() * TICK_RESOLUTION_US;
+        current_time = config::get_tick() * config::tick_resolution_us;
         core_sm.update();
     }
 
-    static array<Battery<N_CELLS>, N_LTC6810>& get_data() { return batteries; }
+    static array<Battery<N_CELLS>, config::n_LTC6810>& get_data() {
+        return batteries;
+    }
     static BMSDiag& get_diag() { return bms_diag; }
 };
 #endif

@@ -16,8 +16,8 @@ namespace LTC6810 {
 struct SPIConfig {
     void (*const SPI_transmit)(const std::span<uint8_t>);
     void (*const SPI_receive)(std::span<uint8_t>);
-    void (*const SPI_CS_turn_on)(void);
     void (*const SPI_CS_turn_off)(void);
+    void (*const SPI_CS_turn_on)(void);
 };
 
 template <size_t N_LTC6810>

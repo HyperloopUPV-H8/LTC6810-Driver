@@ -12,14 +12,14 @@ using std::array;
 namespace LTC6810 {
 
 enum class AdcMode : uint8_t {
-    KHZ_27,
-    KHZ_14,
-    KHZ_7,
-    KHZ_3,
-    KHZ_2,
-    KHZ_1,
-    HZ_422,
-    HZ_26
+    KHZ_27 = 0,
+    KHZ_14 = 1,
+    KHZ_7 = 2,
+    KHZ_3 = 3,
+    KHZ_2 = 4,
+    KHZ_1 = 5,
+    HZ_422 = 6,
+    HZ_26 = 7
 };
 
 template <size_t N_LTC6810>
@@ -93,7 +93,7 @@ class Driver {
         }
     }
 
-    static constexpr array<uint8_t, 8> build_CRG() {
+    static constexpr array<uint8_t, 6> build_CRG() {
         if constexpr (REFON) {
             return {0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
         } else {
@@ -107,7 +107,7 @@ class Driver {
     Command ADCV{build_ADCV(current_mode)};
     Command ADCVSC{build_ADCVSC(current_mode)};
     Command ADAX{build_ADAX(current_mode)};
-    Command WRCFG{0};
+    Command WRCFG{0b0000000000000001};
     Command RDCVA{0b0000000000000100};
     Command RDCVB{0b0000000000000110};
     Command RDAUXA{0b0000000000001100};
@@ -184,9 +184,9 @@ class Driver {
     }
 
     void faster_conv() {
-        if (static_cast<int>(current_mode) < 8) {
+        if (static_cast<int>(current_mode) > 0) {
             current_mode =
-                static_cast<AdcMode>(static_cast<int>(current_mode) + 1);
+                static_cast<AdcMode>(static_cast<int>(current_mode) - 1);
             ADCV = build_ADCV(current_mode);
             ADCVSC = build_ADCVSC(current_mode);
             ADAX = build_ADAX(current_mode);
