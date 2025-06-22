@@ -39,27 +39,28 @@ concept BMSConfig = requires(T) {
     { std::integral<decltype(T::period_us)> };
 };
 
+template <std::size_t N_LTC66810>
 struct BMSDiag {
    private:
-    uint n_fail_conv{};
-    uint n_success_conv{};
-    void calculate_rate() {
-        success_conv_rate =
-            static_cast<float>(n_success_conv) / (n_success_conv + n_fail_conv);
+    array<uint, N_LTC66810> n_fail_conv{};
+    array<uint, N_LTC66810> n_success_conv{};
+    void calculate_rate(uint id) {
+        success_conv_rates[id] = static_cast<float>(n_success_conv[id]) /
+                                 (n_success_conv[id] + n_fail_conv[id]);
     }
 
    public:
-    float success_conv_rate{};
+    array<float, N_LTC66810> success_conv_rates{};
     int32_t reading_period{};
     int32_t time_to_read{};
 
-    void conv_succesfull() {
-        ++n_success_conv;
-        calculate_rate();
+    void conv_succesfull(uint id) {
+        ++n_success_conv[id];
+        calculate_rate(id);
     };
-    void conv_failed() {
-        ++n_fail_conv;
-        calculate_rate();
+    void conv_failed(uint id) {
+        ++n_fail_conv[id];
+        calculate_rate(id);
     }
 };
 
@@ -103,7 +104,7 @@ class BMS {
         LTC6810::SPIConfig{config::SPI_transmit, config::SPI_receive,
                            config::SPI_CS_turn_off, config::SPI_CS_turn_on}};
 
-    static inline BMSDiag bms_diag{};
+    static inline BMSDiag<config::n_LTC6810> bms_diag{};
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
@@ -130,10 +131,10 @@ class BMS {
                 if (cells[i][j]) {
                     batteries[i].cells[j] = cells[i][j].value();
                     if constexpr (DIAG) {
-                        bms_diag.conv_succesfull();
+                        bms_diag.conv_succesfull(i);
                     }
                 } else if constexpr (DIAG) {
-                    bms_diag.conv_failed();
+                    bms_diag.conv_failed(i);
                 }
             }
             if (cells[i][6]) {
@@ -196,6 +197,6 @@ class BMS {
     static array<Battery<N_CELLS>, config::n_LTC6810>& get_data() {
         return batteries;
     }
-    static BMSDiag& get_diag() { return bms_diag; }
+    static BMSDiag<config::n_LTC6810>& get_diag() { return bms_diag; }
 };
 #endif
