@@ -2,6 +2,7 @@
 #define BMS_HPP
 
 #include <cstdint>
+#include <numeric>
 #include <span>
 
 #include "Battery.hpp"
@@ -39,7 +40,8 @@ concept BMSConfig = requires(T) {
     { std::integral<decltype(T::period_us)> };
 };
 
-template <std::size_t N_LTC66810>
+template <std::size_t N_LTC66810, std::size_t PERIOD_US,
+          std::size_t N_WINDOW = 1000000 / PERIOD_US>
 struct BMSDiag {
    private:
     constexpr array<float, N_LTC66810> ones_array() {
@@ -48,24 +50,38 @@ struct BMSDiag {
         return arr;
     }
 
-    array<uint, N_LTC66810> n_fail_conv{};
-    array<uint, N_LTC66810> n_success_conv{};
+    array<array<bool, N_WINDOW>, N_LTC66810> conv_window{};
+    array<std::size_t, N_LTC66810> window_index{};
+    array<std::size_t, N_LTC66810> window_count{};
+
+    void update_window(uint id, bool success) {
+        conv_window[id][window_index[id]] = success;
+        window_index[id] = (window_index[id] + 1) % N_WINDOW;
+
+        if (window_count[id] < N_WINDOW) {
+            ++window_count[id];
+        }
+    }
+
     void calculate_rate(uint id) {
-        success_conv_rates[id] = static_cast<float>(n_success_conv[id]) /
-                                 (n_success_conv[id] + n_fail_conv[id]);
+        auto& window = conv_window[id];
+        float sum = std::accumulate(window.begin(), window.end(), 0.0f);
+        success_conv_rates[id] = sum / static_cast<float>(window_count[id]);
     }
 
    public:
-    array<float, N_LTC66810> success_conv_rates{ones_array()};
+    std::array<float, N_LTC66810> success_conv_rates{ones_array()};
+
     int32_t reading_period{};
     int32_t time_to_read{};
 
     void conv_succesfull(uint id) {
-        ++n_success_conv[id];
+        update_window(id, true);
         calculate_rate(id);
-    };
+    }
+
     void conv_failed(uint id) {
-        ++n_fail_conv[id];
+        update_window(id, false);
         calculate_rate(id);
     }
 };
@@ -110,7 +126,7 @@ class BMS {
         LTC6810::SPIConfig{config::SPI_transmit, config::SPI_receive,
                            config::SPI_CS_turn_off, config::SPI_CS_turn_on}};
 
-    static inline BMSDiag<config::n_LTC6810> bms_diag{};
+    static inline BMSDiag<config::n_LTC6810, config::period_us> bms_diag{};
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
@@ -203,6 +219,8 @@ class BMS {
     static array<Battery<N_CELLS>, config::n_LTC6810>& get_data() {
         return batteries;
     }
-    static BMSDiag<config::n_LTC6810>& get_diag() { return bms_diag; }
+    static BMSDiag<config::n_LTC6810, config::period_us>& get_diag() {
+        return bms_diag;
+    }
 };
 #endif
