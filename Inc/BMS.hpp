@@ -150,10 +150,10 @@ class BMS {
                 if (GPIOs[i][j]) {
                     batteries[i].GPIOs[j] = GPIOs[i][j].value();
                     if constexpr (DIAG) {
-                        bms_diag.conv_succesfull();
+                        bms_diag.conv_succesfull(i);
                     }
                 } else if constexpr (DIAG) {
-                    bms_diag.conv_failed();
+                    bms_diag.conv_failed(i);
                 }
             }
         }
