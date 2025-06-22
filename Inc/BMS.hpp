@@ -42,6 +42,12 @@ concept BMSConfig = requires(T) {
 template <std::size_t N_LTC66810>
 struct BMSDiag {
    private:
+    constexpr array<float, N_LTC66810> ones_array() {
+        array<float, N_LTC66810> arr{};
+        arr.fill(1.0f);
+        return arr;
+    }
+
     array<uint, N_LTC66810> n_fail_conv{};
     array<uint, N_LTC66810> n_success_conv{};
     void calculate_rate(uint id) {
@@ -50,7 +56,7 @@ struct BMSDiag {
     }
 
    public:
-    array<float, N_LTC66810> success_conv_rates{};
+    array<float, N_LTC66810> success_conv_rates{ones_array()};
     int32_t reading_period{};
     int32_t time_to_read{};
 
