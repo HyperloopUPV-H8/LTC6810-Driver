@@ -43,32 +43,42 @@ concept BMSConfig = requires(T) {
 
 template <std::size_t N_LTC66810, std::size_t PERIOD_US,
           std::size_t WINDOW_SIZE_MS,
-          std::size_t N_WINDOW = WINDOW_SIZE_MS / PERIOD_US>
+          std::size_t N_WINDOW = WINDOW_SIZE_MS * 1000 / PERIOD_US>
 struct BMSDiag {
    private:
-    constexpr array<float, N_LTC66810> ones_array() {
-        array<float, N_LTC66810> arr{};
+    constexpr std::array<float, N_LTC66810> ones_array() {
+        std::array<float, N_LTC66810> arr{};
         arr.fill(1.0f);
         return arr;
     }
 
-    array<array<bool, N_WINDOW>, N_LTC66810> conv_window{};
-    array<std::size_t, N_LTC66810> window_index{};
-    array<std::size_t, N_LTC66810> window_count{};
+    std::array<std::array<bool, N_WINDOW>, N_LTC66810> conv_window{};
+    std::array<std::size_t, N_LTC66810> window_index{};
+    std::array<std::size_t, N_LTC66810> window_count{};
+    std::array<std::size_t, N_LTC66810> success_count{};
 
     void update_window(uint id, bool success) {
+        bool old_value = conv_window[id][window_index[id]];
+
+        if (window_count[id] == N_WINDOW) {
+            if (old_value) {
+                --success_count[id];
+            }
+        }
+
         conv_window[id][window_index[id]] = success;
+        if (success) {
+            ++success_count[id];
+        }
+
         window_index[id] = (window_index[id] + 1) % N_WINDOW;
 
         if (window_count[id] < N_WINDOW) {
             ++window_count[id];
         }
-    }
 
-    void calculate_rate(uint id) {
-        auto& window = conv_window[id];
-        float sum = std::accumulate(window.begin(), window.end(), 0.0f);
-        success_conv_rates[id] = sum / static_cast<float>(window_count[id]);
+        success_conv_rates[id] = static_cast<float>(success_count[id]) /
+                                 static_cast<float>(window_count[id]);
     }
 
    public:
@@ -77,15 +87,9 @@ struct BMSDiag {
     int32_t reading_period{};
     int32_t time_to_read{};
 
-    void conv_succesfull(uint id) {
-        update_window(id, true);
-        calculate_rate(id);
-    }
+    void conv_succesfull(uint id) { update_window(id, true); }
 
-    void conv_failed(uint id) {
-        update_window(id, false);
-        calculate_rate(id);
-    }
+    void conv_failed(uint id) { update_window(id, false); }
 };
 
 template <BMSConfig config>
@@ -186,7 +190,7 @@ class BMS {
 
         final_conv = config::get_tick() * config::tick_resolution_us;
         bms_diag.time_to_read = final_conv - init_conv;
-        auto timestamp = config::get_tick() * config::tick_resolution_us;
+        int32_t timestamp = config::get_tick() * config::tick_resolution_us;
         bms_diag.reading_period = timestamp - last_read;
         last_read = timestamp;
 
