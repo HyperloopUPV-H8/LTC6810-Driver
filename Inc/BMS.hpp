@@ -38,10 +38,12 @@ concept BMSConfig = requires(T) {
     { T::get_tick() } -> std::same_as<int32_t>;
     { std::integral<decltype(T::tick_resolution_us)> };
     { std::integral<decltype(T::period_us)> };
+    { std::integral<decltype(T::window_conv_size_ms)> };
 };
 
 template <std::size_t N_LTC66810, std::size_t PERIOD_US,
-          std::size_t N_WINDOW = 1000000 / PERIOD_US>
+          std::size_t WINDOW_SIZE_MS,
+          std::size_t N_WINDOW = WINDOW_SIZE_MS / PERIOD_US>
 struct BMSDiag {
    private:
     constexpr array<float, N_LTC66810> ones_array() {
@@ -126,7 +128,9 @@ class BMS {
         LTC6810::SPIConfig{config::SPI_transmit, config::SPI_receive,
                            config::SPI_CS_turn_off, config::SPI_CS_turn_on}};
 
-    static inline BMSDiag<config::n_LTC6810, config::period_us> bms_diag{};
+    static inline BMSDiag<config::n_LTC6810, config::period_us,
+                          config::window_conv_size_ms>
+        bms_diag{};
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
@@ -219,7 +223,9 @@ class BMS {
     static array<Battery<N_CELLS>, config::n_LTC6810>& get_data() {
         return batteries;
     }
-    static BMSDiag<config::n_LTC6810, config::period_us>& get_diag() {
+    static BMSDiag<config::n_LTC6810, config::period_us,
+                   config::window_conv_size_ms>&
+    get_diag() {
         return bms_diag;
     }
 };
