@@ -10,7 +10,7 @@
 using Callback = void (*)();
 using Guard = bool (*)();
 
-namespace LTC6810 {
+namespace LTC6810Driver {
 template <class StateEnum>
 struct Transition {
     StateEnum target;
@@ -94,7 +94,7 @@ struct StateMachine {
         }
     };
 };
-}  // namespace LTC6810
+}  // namespace LTC6810Driver
 
 template <typename StateEnum, typename... Transitions>
     requires LTC6810::are_transitions<StateEnum, Transitions...>
@@ -102,7 +102,7 @@ consteval auto make_state(StateEnum state, Callback action,
                           Transitions... transitions) {
     constexpr size_t NTransitions = sizeof...(transitions);
     return LTC6810::State<StateEnum, NTransitions>(state, action,
-                                                      transitions...);
+                                                   transitions...);
 }
 
 template <typename StateEnum, typename... States>

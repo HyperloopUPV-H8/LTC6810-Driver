@@ -9,7 +9,7 @@
 
 using std::array;
 
-namespace LTC6810 {
+namespace LTC6810Driver {
 
 enum class AdcMode : uint8_t {
     KHZ_27 = 0,
@@ -193,6 +193,6 @@ class Driver {
         }
     }
 };
-}  // namespace LTC6810
+}  // namespace LTC6810Driver
 
 #endif

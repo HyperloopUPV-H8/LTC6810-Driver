@@ -41,57 +41,6 @@ concept BMSConfig = requires(T) {
     { std::integral<decltype(T::window_conv_size_ms)> };
 };
 
-template <std::size_t N_LTC66810, std::size_t PERIOD_US,
-          std::size_t WINDOW_SIZE_MS,
-          std::size_t N_WINDOW = WINDOW_SIZE_MS * 1000 / PERIOD_US>
-struct BMSDiag {
-   private:
-    constexpr std::array<float, N_LTC66810> ones_array() {
-        std::array<float, N_LTC66810> arr{};
-        arr.fill(1.0f);
-        return arr;
-    }
-
-    std::array<std::array<bool, N_WINDOW>, N_LTC66810> conv_window{};
-    std::array<std::size_t, N_LTC66810> window_index{};
-    std::array<std::size_t, N_LTC66810> window_count{};
-    std::array<std::size_t, N_LTC66810> success_count{};
-
-    void update_window(uint id, bool success) {
-        bool old_value = conv_window[id][window_index[id]];
-
-        if (window_count[id] == N_WINDOW) {
-            if (old_value) {
-                --success_count[id];
-            }
-        }
-
-        conv_window[id][window_index[id]] = success;
-        if (success) {
-            ++success_count[id];
-        }
-
-        window_index[id] = (window_index[id] + 1) % N_WINDOW;
-
-        if (window_count[id] < N_WINDOW) {
-            ++window_count[id];
-        }
-
-        success_conv_rates[id] = static_cast<float>(success_count[id]) /
-                                 static_cast<float>(window_count[id]);
-    }
-
-   public:
-    std::array<float, N_LTC66810> success_conv_rates{ones_array()};
-
-    int32_t reading_period{};
-    int32_t time_to_read{};
-
-    void conv_succesfull(uint id) { update_window(id, true); }
-
-    void conv_failed(uint id) { update_window(id, false); }
-};
-
 template <BMSConfig config>
 class BMS {
     static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
@@ -132,18 +81,17 @@ class BMS {
         LTC6810::SPIConfig{config::SPI_transmit, config::SPI_receive,
                            config::SPI_CS_turn_off, config::SPI_CS_turn_on}};
 
-    static inline BMSDiag<config::n_LTC6810, config::period_us,
-                          config::window_conv_size_ms>
-        bms_diag{};
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
-    static inline array<Battery<N_CELLS>, config::n_LTC6810> batteries{};
-    static inline array<uint16_t, config::n_LTC6810 * 4> GPIOs{};
+    static inline array<LTC6810<N_CELLS>, config::n_LTC6810> ltcs{};
 
     static inline int32_t current_time{};
     static inline int32_t sleep_reference{};
     static inline int32_t last_read{};
+
+    int32_t reading_period{};
+    int32_t time_to_read{};
 
     // Actions
     static void sleep_action() {}
@@ -159,16 +107,16 @@ class BMS {
         for (uint i{}; i < config::n_LTC6810; ++i) {
             for (uint j{}; j < N_CELLS; ++j) {
                 if (cells[i][j]) {
-                    batteries[i].cells[j] = cells[i][j].value();
+                    ltcs[i].cells[j] = cells[i][j].value();
                     if constexpr (DIAG) {
-                        bms_diag.conv_succesfull(i);
+                        ltcs[i].conv_succesfull();
                     }
                 } else if constexpr (DIAG) {
-                    bms_diag.conv_failed(i);
+                    ltcs[i].conv_failed();
                 }
             }
             if (cells[i][6]) {
-                batteries[i].total_voltage = cells[i][6].value();
+                ltcs[i].total_voltage = cells[i][6].value();
             }
         }
     }
@@ -178,32 +126,30 @@ class BMS {
         for (uint i{}; i < config::n_LTC6810; ++i) {
             for (uint j{}; j < 4; ++j) {
                 if (GPIOs[i][j]) {
-                    batteries[i].GPIOs[j] = GPIOs[i][j].value();
+                    ltcs[i].GPIOs[j] = GPIOs[i][j].value();
                     if constexpr (DIAG) {
-                        bms_diag.conv_succesfull(i);
+                        ltcs[i].conv_succesfull();
                     }
                 } else if constexpr (DIAG) {
-                    bms_diag.conv_failed(i);
+                    ltcs[i].conv_failed();
                 }
             }
         }
 
         final_conv = config::get_tick() * config::tick_resolution_us;
-        bms_diag.time_to_read = final_conv - init_conv;
+        time_to_read = final_conv - init_conv;
         int32_t timestamp = config::get_tick() * config::tick_resolution_us;
-        bms_diag.reading_period = timestamp - last_read;
+        reading_period = timestamp - last_read;
         last_read = timestamp;
 
-        if (bms_diag.reading_period >
-            config::period_us + config::period_us * 0.1) {
+        if (reading_period > config::period_us + config::period_us * 0.1) {
             driver.faster_conv();
         }
     }
 
     // Transitions
     static bool sleep_timeout_guard() {
-        if ((current_time - last_read) >=
-            (config::period_us - bms_diag.time_to_read)) {
+        if ((current_time - last_read) >= (config::period_us - time_to_read)) {
             driver.wake_up();
             return true;
         }
@@ -211,7 +157,7 @@ class BMS {
     }
     static bool period_timeout_guard() {
         auto period_time{current_time - last_read};
-        return (period_time >= (config::period_us - bms_diag.time_to_read));
+        return (period_time >= (config::period_us - time_to_read));
     }
     static bool sleep_guard() {
         return (current_time - sleep_reference) >= TIME_SLEEP_US;
@@ -224,13 +170,10 @@ class BMS {
         core_sm.update();
     }
 
-    static array<Battery<N_CELLS>, config::n_LTC6810>& get_data() {
-        return batteries;
+    static array<LTC6810<N_CELLS>, config::n_LTC6810>& get_data() {
+        return ltcs;
     }
-    static BMSDiag<config::n_LTC6810, config::period_us,
-                   config::window_conv_size_ms>&
-    get_diag() {
-        return bms_diag;
-    }
+
+    static float get_period() { return reading_period; }
 };
 #endif
