@@ -4,12 +4,15 @@
 #include <array>
 
 constexpr size_t N_GPIOS{4};
-constexpr float READING_PERIOD{0.02};
-constexpr float CONV_STEP = 1 / ((10 / READING_PERIOD) * 2);
+constexpr float CONV_RATE_TIME{1.0};
 
 namespace LTC6810Driver {
-template <std::size_t N_CELLS>
+template <std::size_t N_CELLS, size_t READING_PERIOD_US>
 class LTC6810 {
+    const float CONV_STEP =
+        1 / ((10 / (static_cast<float>(READING_PERIOD_US) / 1000000)) *
+             CONV_RATE_TIME);
+
    public:
     std::array<float, N_CELLS> cells{};
     std::array<float, N_GPIOS> GPIOs{};
@@ -18,13 +21,13 @@ class LTC6810 {
 
     void conv_successful() {
         if (conv_rate < 1.0) {
-            conv_rate + CONV_STEP;
+            conv_rate += CONV_STEP;
         }
     }
 
     void conv_failed() {
         if (conv_rate > 0.0) {
-            conv_rate - CONV_STEP;
+            conv_rate -= CONV_STEP;
         }
     }
 };

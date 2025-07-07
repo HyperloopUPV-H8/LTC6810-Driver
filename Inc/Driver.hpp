@@ -117,7 +117,7 @@ class Driver {
     // Registers
     Register CFG{build_CRG()};
 
-    LTC6810::NetworkLink<N_LTC6810> link;
+    LTC6810Driver::NetworkLink<N_LTC6810> link;
 
    public:
     consteval Driver(const SPIConfig& config) : link(config) {}

@@ -5,8 +5,8 @@
 #include <numeric>
 #include <span>
 
-#include "Battery.hpp"
 #include "Driver.hpp"
+#include "LTC6810.hpp"
 #include "NetworkLink.hpp"
 #include "StateMachine.hpp"
 
@@ -43,55 +43,59 @@ concept BMSConfig = requires(T) {
 
 template <BMSConfig config>
 class BMS {
-    static consteval LTC6810::StateMachine<CoreState, 6, 7> make_core_sm() {
-        constexpr LTC6810::State sleep =
+    static consteval LTC6810Driver::StateMachine<CoreState, 6, 7>
+    make_core_sm() {
+        constexpr LTC6810Driver::State sleep =
             make_state(CoreState::SLEEP, sleep_action,
-                       LTC6810::Transition{CoreState::MEASURING_CELLS,
-                                           sleep_timeout_guard});
-        constexpr LTC6810::State standby =
+                       LTC6810Driver::Transition{CoreState::MEASURING_CELLS,
+                                                 sleep_timeout_guard});
+        constexpr LTC6810Driver::State standby =
             make_state(CoreState::STANDBY, standby_action,
-                       LTC6810::Transition{CoreState::SLEEP, sleep_guard},
-                       LTC6810::Transition{CoreState::MEASURING_CELLS,
-                                           period_timeout_guard});
-        constexpr LTC6810::State measuring_cells =
+                       LTC6810Driver::Transition{CoreState::SLEEP, sleep_guard},
+                       LTC6810Driver::Transition{CoreState::MEASURING_CELLS,
+                                                 period_timeout_guard});
+        constexpr LTC6810Driver::State measuring_cells =
             make_state(CoreState::MEASURING_CELLS, measure_cells,
-                       LTC6810::Transition{CoreState::READING_CELLS,
-                                           conversion_done_guard});
-        constexpr LTC6810::State reading_cells =
+                       LTC6810Driver::Transition{CoreState::READING_CELLS,
+                                                 conversion_done_guard});
+        constexpr LTC6810Driver::State reading_cells =
             make_state(CoreState::READING_CELLS, read_cells,
-                       LTC6810::Transition{CoreState::MEASURING_GPIOS,
-                                           +[]() { return true; }});
-        constexpr LTC6810::State measuring_gpios =
+                       LTC6810Driver::Transition{CoreState::MEASURING_GPIOS,
+                                                 +[]() { return true; }});
+        constexpr LTC6810Driver::State measuring_gpios =
             make_state(CoreState::MEASURING_GPIOS, measure_GPIOs,
-                       LTC6810::Transition{CoreState::READING_GPIOS,
-                                           conversion_done_guard});
-        constexpr LTC6810::State reading_gpios = make_state(
-            CoreState::READING_GPIOS, read_GPIOs,
-            LTC6810::Transition{CoreState::STANDBY, +[]() { return true; }});
+                       LTC6810Driver::Transition{CoreState::READING_GPIOS,
+                                                 conversion_done_guard});
+        constexpr LTC6810Driver::State reading_gpios =
+            make_state(CoreState::READING_GPIOS, read_GPIOs,
+                       LTC6810Driver::Transition{CoreState::STANDBY,
+                                                 +[]() { return true; }});
 
         return make_state_machine(CoreState::SLEEP, sleep, standby,
                                   measuring_cells, reading_cells,
                                   measuring_gpios, reading_gpios);
     }
 
-    static inline LTC6810::StateMachine<CoreState, 6, 7> core_sm{
+    static inline LTC6810Driver::StateMachine<CoreState, 6, 7> core_sm{
         make_core_sm()};
 
-    static inline LTC6810::Driver<config::n_LTC6810> driver{
-        LTC6810::SPIConfig{config::SPI_transmit, config::SPI_receive,
-                           config::SPI_CS_turn_off, config::SPI_CS_turn_on}};
+    static inline LTC6810Driver::Driver<config::n_LTC6810> driver{
+        LTC6810Driver::SPIConfig{config::SPI_transmit, config::SPI_receive,
+                                 config::SPI_CS_turn_off,
+                                 config::SPI_CS_turn_on}};
 
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
-    static inline array<LTC6810<N_CELLS>, config::n_LTC6810> ltcs{};
+    static inline array<LTC6810Driver::LTC6810<N_CELLS, config::period_us>,
+                        config::n_LTC6810>
+        ltcs{};
 
     static inline int32_t current_time{};
     static inline int32_t sleep_reference{};
     static inline int32_t last_read{};
 
-    int32_t reading_period{};
-    int32_t time_to_read{};
+    static inline int32_t time_to_read{};
 
     // Actions
     static void sleep_action() {}
@@ -109,7 +113,7 @@ class BMS {
                 if (cells[i][j]) {
                     ltcs[i].cells[j] = cells[i][j].value();
                     if constexpr (DIAG) {
-                        ltcs[i].conv_succesfull();
+                        ltcs[i].conv_successful();
                     }
                 } else if constexpr (DIAG) {
                     ltcs[i].conv_failed();
@@ -128,7 +132,7 @@ class BMS {
                 if (GPIOs[i][j]) {
                     ltcs[i].GPIOs[j] = GPIOs[i][j].value();
                     if constexpr (DIAG) {
-                        ltcs[i].conv_succesfull();
+                        ltcs[i].conv_successful();
                     }
                 } else if constexpr (DIAG) {
                     ltcs[i].conv_failed();
@@ -165,12 +169,16 @@ class BMS {
     static bool conversion_done_guard() { return driver.is_conv_done(); }
 
    public:
+    static inline int32_t reading_period{};
+
     static void update() {
         current_time = config::get_tick() * config::tick_resolution_us;
         core_sm.update();
     }
 
-    static array<LTC6810<N_CELLS>, config::n_LTC6810>& get_data() {
+    static array<LTC6810Driver::LTC6810<N_CELLS, config::period_us>,
+                 config::n_LTC6810>&
+    get_data() {
         return ltcs;
     }
 
