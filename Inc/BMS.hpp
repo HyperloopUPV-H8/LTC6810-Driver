@@ -43,6 +43,9 @@ concept BMSConfig = requires(T) {
 
 template <BMSConfig config>
 class BMS {
+    using DriverLTC = LTC6810Driver::LTC6810<N_CELLS, config::period_us,
+                                             config::conv_rate_time_ms>;
+
     static consteval LTC6810Driver::StateMachine<CoreState, 6, 7>
     make_core_sm() {
         constexpr LTC6810Driver::State sleep =
@@ -87,10 +90,7 @@ class BMS {
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
-    static inline array<LTC6810Driver::LTC6810<N_CELLS, config::period_us,
-                                               config::conv_rate_time_ms>,
-                        config::n_LTC6810>
-        ltcs{};
+    static inline array<DriverLTC, config::n_LTC6810> ltcs{};
 
     static inline int32_t current_time{};
     static inline int32_t sleep_reference{};
@@ -177,12 +177,7 @@ class BMS {
         core_sm.update();
     }
 
-    static array<LTC6810Driver::LTC6810<N_CELLS, config::period_us,
-                                        config::conv_rate_time_ms>,
-                 config::n_LTC6810>&
-    get_data() {
-        return ltcs;
-    }
+    static array<DriverLTC, config::n_LTC6810>& get_data() { return ltcs; }
 
     static float get_period() { return reading_period; }
 };
