@@ -11,7 +11,7 @@
 
 using std::array;
 using std::span;
-namespace LTC6810 {
+namespace LTC6810Driver {
 
 struct SPIConfig {
     void (*const SPI_transmit)(const std::span<uint8_t>);
@@ -84,5 +84,5 @@ class NetworkLink {
         spi_link.SPI_CS_turn_on();
     }
 };
-}  // namespace LTC6810
+}  // namespace LTC6810Driver
 #endif

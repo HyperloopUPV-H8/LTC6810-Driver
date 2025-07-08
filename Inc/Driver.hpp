@@ -9,7 +9,7 @@
 
 using std::array;
 
-namespace LTC6810 {
+namespace LTC6810Driver {
 
 enum class AdcMode : uint8_t {
     KHZ_27 = 0,
@@ -117,7 +117,7 @@ class Driver {
     // Registers
     Register CFG{build_CRG()};
 
-    LTC6810::NetworkLink<N_LTC6810> link;
+    LTC6810Driver::NetworkLink<N_LTC6810> link;
 
    public:
     consteval Driver(const SPIConfig& config) : link(config) {}
@@ -193,6 +193,6 @@ class Driver {
         }
     }
 };
-}  // namespace LTC6810
+}  // namespace LTC6810Driver
 
 #endif

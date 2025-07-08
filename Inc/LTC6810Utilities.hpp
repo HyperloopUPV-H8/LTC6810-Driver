@@ -7,7 +7,7 @@
 using std::array;
 using std::span;
 
-namespace LTC6810 {
+namespace LTC6810Driver {
 const uint16_t CRC15_POLY = 0x4599;
 
 constexpr array<uint16_t, 256> init_PEC15_Table() {
@@ -82,5 +82,5 @@ struct Register {
     }
 };
 
-}  // namespace LTC6810
+}  // namespace LTC6810Driver
 #endif
