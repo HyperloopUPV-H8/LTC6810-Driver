@@ -38,7 +38,7 @@ concept BMSConfig = requires(T) {
     { T::get_tick() } -> std::same_as<int32_t>;
     { std::integral<decltype(T::tick_resolution_us)> };
     { std::integral<decltype(T::period_us)> };
-    { std::integral<decltype(T::window_conv_size_ms)> };
+    { std::integral<decltype(T::conv_rate_time_ms)> };
 };
 
 template <BMSConfig config>
@@ -87,7 +87,8 @@ class BMS {
     static inline uint32_t init_conv{};
     static inline uint32_t final_conv{};
 
-    static inline array<LTC6810Driver::LTC6810<N_CELLS, config::period_us>,
+    static inline array<LTC6810Driver::LTC6810<N_CELLS, config::period_us,
+                                               config::conv_rate_time_ms>,
                         config::n_LTC6810>
         ltcs{};
 
@@ -176,7 +177,8 @@ class BMS {
         core_sm.update();
     }
 
-    static array<LTC6810Driver::LTC6810<N_CELLS, config::period_us>,
+    static array<LTC6810Driver::LTC6810<N_CELLS, config::period_us,
+                                        config::conv_rate_time_ms>,
                  config::n_LTC6810>&
     get_data() {
         return ltcs;

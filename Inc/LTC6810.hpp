@@ -4,14 +4,14 @@
 #include <array>
 
 constexpr size_t N_GPIOS{4};
-constexpr float CONV_RATE_TIME{1.0};
 
 namespace LTC6810Driver {
-template <std::size_t N_CELLS, size_t READING_PERIOD_US>
+template <std::size_t N_CELLS, size_t READING_PERIOD_US,
+          size_t CONV_RATE_TIME_MS>
 class LTC6810 {
     const float CONV_STEP =
         1 / ((10 / (static_cast<float>(READING_PERIOD_US) / 1000000)) *
-             CONV_RATE_TIME);
+             (static_cast<float>(CONV_RATE_TIME_MS) / 1000));
 
    public:
     std::array<float, N_CELLS> cells{};
