@@ -1,6 +1,7 @@
 #ifndef DRIVER_HPP
 #define DRIVER_HPP
 
+#include <optional>
 #include "NetworkLink.hpp"
 
 #define ADC_RESOLUTION 100e-6  // 100 microV
