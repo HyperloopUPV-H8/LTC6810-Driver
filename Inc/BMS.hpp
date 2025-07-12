@@ -97,6 +97,7 @@ class BMS {
     static inline int32_t last_read{};
 
     static inline int32_t time_to_read{};
+    static inline int32_t reading_period{};
 
     // Actions
     static void sleep_action() {}
@@ -143,11 +144,10 @@ class BMS {
 
         final_conv = config::get_tick() * config::tick_resolution_us;
         time_to_read = final_conv - init_conv;
-        int32_t timestamp = config::get_tick() * config::tick_resolution_us;
-        reading_period = timestamp - last_read;
-        last_read = timestamp;
+        reading_period = final_conv - last_read;
+        last_read = final_conv;
 
-        if (reading_period > config::period_us + config::period_us * 0.1) {
+        if (reading_period > config::period_us) {
             driver.faster_conv();
         }
     }
@@ -170,8 +170,6 @@ class BMS {
     static bool conversion_done_guard() { return driver.is_conv_done(); }
 
    public:
-    static inline int32_t reading_period{};
-
     static void update() {
         current_time = config::get_tick() * config::tick_resolution_us;
         core_sm.update();
@@ -179,6 +177,6 @@ class BMS {
 
     static array<DriverLTC, config::n_LTC6810>& get_data() { return ltcs; }
 
-    static float get_period() { return reading_period; }
+    static int32_t& get_period() { return reading_period; }
 };
 #endif
